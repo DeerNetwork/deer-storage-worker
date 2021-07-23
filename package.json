@@ -17,6 +17,11 @@
     "prepublish": "npm run -s clean && npm run -s build"
   },
   "dependencies": {
+    "@nft360/type-definitions": "^0.2.3",
+    "@polkadot/api": "^5.1.1",
+    "axios": "^0.21.1",
+    "ipfs-http-client": "^50.1.2",
+    "winston": "^3.3.3"
   },
   "devDependencies": {
     "@babel/runtime": "^7.14.6",
