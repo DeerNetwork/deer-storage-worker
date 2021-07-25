@@ -19,9 +19,10 @@ export interface AttestRes {
   sig: number[],
 }
 
-export interface PrepareRes {
-  add_files: string[],
+export interface PrepareReportRes {
+  add_files: [string, number][],
   del_files: string[],
+  power: number;
   rid: number;
   sig: number[];
 }
@@ -43,7 +44,7 @@ export default class Teaclave {
     return this.wrapRpc("attest", () => this.api.get("/attest"));
   }
 
-  public async preparePeport(files: string[]): Promise<PrepareRes> {
+  public async preparePeport(files: string[]): Promise<PrepareReportRes> {
     return this.wrapRpc("preparePeport", () => this.api.post("/report/prepare", { files }));
   }
 

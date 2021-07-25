@@ -19,9 +19,19 @@ export const logger = createLogger({
   ],
 });
 
-
 export async function sleep(timeMs: number) {
   return new Promise(resolve => {
     setTimeout(resolve, timeMs);
   });
+}
+
+export function hex2str(hex: string) {
+  return Buffer.from(hex.substring(2), 'hex').toString();
+}
+
+export function fatal(msg: string) {
+  logger.error(`💥 Fatal error: ${msg}`);
+  setTimeout(() => {
+    process.exit();
+  }, 0);
 }

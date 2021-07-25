@@ -1,10 +1,16 @@
 {
   "compilerOptions": {
+    "outDir": "./dist",
+    "baseUrl": "./src",
     "module": "commonjs",
     "declaration": true,
     "allowSyntheticDefaultImports": true,
     "target": "es6",
     "sourceMap": false,
     "lib": ["ES2018"],
+    "paths": {
+      "@polkadot/api/augment": ["../node_modules/@nft360/type-definitions/dist/interfaces/augment-api.d.ts"],
+      "@polkadot/types/augment": ["../node_modules/@nft360/type-definitions/dist/interfaces/augment-types.d.ts"],
+    }
   }
 }
