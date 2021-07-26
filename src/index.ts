@@ -28,12 +28,13 @@ class Engine {
   private queue: MaxPriorityQueue<Task>;
   private period = Peroid.Idle; 
   private files: string[] = [];
+  private isReporting = false;
   public async init() {
     this.chain = new Chain();
     this.ipfs = makeIpfs();
     this.teaclave = new Teaclave();
     this.queue = new MaxPriorityQueue();
-    await this.chain.init()
+    await this.chain.init();
     await this.initEnclave();
     await this.chain.listen();
     await this.runQueue();
@@ -43,13 +44,17 @@ class Engine {
         const period = this.chain.detectPeroid(header.number.toNumber());
         this.period = period;
         if (this.period === Peroid.Enforce) {
-          this.queue.enqueue({ type: "report" }, 4);
+          if (!this.isReporting) {
+            this.queue.enqueue({ type: "report" }, 4);
+            this.isReporting = true;
+          }
         }
       } catch (e) {
-        logger.error(`💥 Caught on event header: ${e.toString()}`)
+        logger.error(`💥 Caught on event header: ${e.toString()}`);
       }
     });
     emitter.on("file:add", cid => {
+      if (this.isReporting) return;
       if (this.period === Peroid.Prepare) {
         this.queue.enqueue({ type: "addFile", cid }, 3);
       } else if (this.period === Peroid.Idle) {
@@ -58,6 +63,9 @@ class Engine {
     });
     emitter.on("file:del", async cid => {
       this.queue.enqueue({ type: "delFile", cid }, 1);
+    });
+    emitter.on("reported", async () => {
+      this.commitReport();
     });
   }
 
@@ -72,7 +80,7 @@ class Engine {
       logger.info(`💸 Registering node with ${JSON.stringify(attest)}`);
       const res = await this.chain.register(attest);
       if (res.status === "failed") {
-        fatal("💥 Fail to register node")
+        fatal("💥 Fail to register node");
       }
       logger.info("✨ Register node successed");
     } else {
@@ -105,20 +113,20 @@ class Engine {
     try {
       const fileState = await this.chain.getFileState(cid);
       if (fileState.included) return;
-      await this.ipfs.pin(cid)
+      await this.ipfs.pin(cid);
       await this.teaclave.addFile(cid);
       this.files.push(cid);
     } catch (e) {
-      logger.error(`💥 Fail to add file ${cid}, ${e.toString()}`)
+      logger.error(`💥 Fail to add file ${cid}, ${e.toString()}`);
     }
   }
 
   private async delFile(cid) {
     try {
       await this.teaclave.delFile(cid);
-      await this.ipfs.unpin(cid)
+      await this.ipfs.unpin(cid);
     } catch (e) {
-      logger.error(`💥 Fail to del file ${cid}, ${e.toString()}`)
+      logger.error(`💥 Fail to del file ${cid}, ${e.toString()}`);
     }
   }
 
@@ -128,34 +136,38 @@ class Engine {
         return this.chain.getFileState(cid);
       }));
       const toAddFiles = [];
-      const toDelFiles = [];
       for (const state of fileStates) {
         if (!state.included && state.numReplicas < this.chain.constants.maxFileReplicas) {
           toAddFiles.push(state.cid);
-        } else {
-          toDelFiles.push(state.cid);
         }
       }
       const settleFiles = [];
       const reportData = await this.teaclave.preparePeport(toAddFiles);
       const res = await this.chain.prepareReport(this.machine, reportData, settleFiles);
       if (res.status === "failed") {
-        fatal("💥 Fail to report work")
+        fatal("💥 Fail to report work");
       }
       logger.info("✨ Report node successed");
-      await this.teaclave.commitReport(reportData.rid);
-      await this.chain.syncReportState();
-      toDelFiles.forEach(cid => {
-        this.queue.enqueue({ type: "delFile", cid }, 1);
-      })
     } catch (e) {
       logger.error(`💥 Fail to report ${e.toString()}`);
+    } finally {
+      this.files = [];
+      this.isReporting = false;
     }
   }
 
+  private async commitReport() {
+    try {
+      await this.chain.syncReportState();
+      await this.teaclave.commitReport(this.chain.reportState.rid);
+      logger.info("✨ Commit report successed");
+    } catch (e) {
+      logger.error(`💥 Fail to commit report ${e.toString()}`);
+    }
+  }
 }
 
 const engine = new Engine();
 engine.init().catch(e => {
-    logger.error(`💥 Caught on engine.init: ${e.toString()}`)
+  logger.error(`💥 Caught on engine.init: ${e.toString()}`);
 });

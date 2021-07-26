@@ -26,7 +26,7 @@ export async function sleep(timeMs: number) {
 }
 
 export function hex2str(hex: string) {
-  return Buffer.from(hex.substring(2), 'hex').toString();
+  return Buffer.from(hex.substring(2), "hex").toString();
 }
 
 export function fatal(msg: string) {

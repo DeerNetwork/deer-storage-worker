@@ -85,8 +85,8 @@ export default class Chain {
   public async getFileState(cid: string): Promise<FileState> {
     const maybeOrder = await this.api.query.fileStorage.fileOrders(cid);
     if (maybeOrder.isSome) {
-      const order = maybeOrder.unwrap()
-      const included = !!order.replicas.find(v => v.toHuman() === this.account)
+      const order = maybeOrder.unwrap();
+      const included = !!order.replicas.find(v => v.toHuman() === this.account);
       return { included, numReplicas: order.replicas.length, cid };
     } 
     const file = await this.api.query.fileStorage.storeFiles(cid);
@@ -95,11 +95,11 @@ export default class Chain {
   }
 
   public async syncReportState(): Promise<ReportState> {
-    let [maybeNode, nextRoundAt] = await Promise.all([
+    const [maybeNode, nextRoundAt] = await Promise.all([
       this.api.query.fileStorage.nodes(this.account),
       this.api.query.fileStorage.nextRoundAt(),
     ]);
-    let node = maybeNode.unwrapOrDefault();
+    const node = maybeNode.unwrapOrDefault();
     this.reportState = {
       isReported: node.reported_at.gt(nextRoundAt.sub(new BN(this.constants.roundDuration))),
       rid: node.rid.toNumber(),
@@ -173,10 +173,10 @@ export default class Chain {
 
         if (status.isInBlock) {
           events.forEach(({event: {data, method, section}}) => {
-            if (section === 'system' && method === 'ExtrinsicFailed') {
+            if (section === "system" && method === "ExtrinsicFailed") {
               const [dispatchError] = data as unknown as ITuple<[DispatchError]>;
               const result: TxRes = {
-                status: 'failed',
+                status: "failed",
                 message: dispatchError.type,
               };
               if (dispatchError.isModule) {
@@ -185,16 +185,16 @@ export default class Chain {
                   new Uint8Array([mod.index.toNumber(), mod.error.toNumber()])
                 );
                 result.message = `${error.section}.${error.name}`;
-                result.details = error.docs.join('');
+                result.details = error.docs.join("");
               }
 
               logger.info(
                 `  ↪ 💸 ❌ Send transaction(${tx.type}) failed with ${result.message}.`
               );
               resolve(result);
-            } else if (method === 'ExtrinsicSuccess') {
+            } else if (method === "ExtrinsicSuccess") {
               const result: TxRes = {
-                status: 'success',
+                status: "success",
               };
 
               logger.info(
@@ -209,7 +209,7 @@ export default class Chain {
         reject(e);
       });
     });
-}
+  }
 
   private async stop() {
     if (this?.api?.disconnect) {
@@ -224,14 +224,14 @@ export default class Chain {
   }
 
   private initAccount() {
-    let keyring = new Keyring({ type: "sr25519" });
+    const keyring = new Keyring({ type: "sr25519" });
     this.keyPair = keyring.createFromUri(config.secret);
   }
 
   private async listenBlocks() {
     this.unsubscribeBlocks = await this.api.rpc.chain.subscribeFinalizedHeads(header => {
       emitter.emit("header", header);
-    })
+    });
   }
 
   private async listenEvents() {
@@ -247,20 +247,24 @@ export default class Chain {
         } else if (method === "StoreFileRemoved") {
           const cid = hex2str(data[0].toString());
           emitter.emit("file:del", cid);
-        } 
+        } else if (method === "NodeReported") {
+          if (this.account === data[0].toHuman()) {
+            emitter.emit("reported");
+          }
+        }
       }
     });
   }
 
   private async syncConstants() {
-    let keys = [
+    const keys = [
       "roundDuration",
       "maxFileReplicas",
       "effectiveFileReplicas",
       "maxFileSize",
       "maxReportFiles",
     ];
-    const values = await Promise.all(keys.map(name => (this.api.consts.fileStorage[name] as any).toNumber()))
+    const values = await Promise.all(keys.map(name => (this.api.consts.fileStorage[name] as any).toNumber()));
     this.constants = keys.reduce((acc, cur, i) => {
       acc[cur] = values[i];
     }, {} as any);
