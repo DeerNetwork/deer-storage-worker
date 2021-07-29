@@ -69,7 +69,7 @@ export default class Chain {
     await this.waitReady();
     Promise.all([
       await this.syncConstants(),
-      await this.syncReportState(),
+      await this.getReportState(),
     ]);
   }
 
@@ -94,7 +94,7 @@ export default class Chain {
     return { included: false, numReplicas: 0, cid };
   }
 
-  public async syncReportState(): Promise<ReportState> {
+  public async getReportState(): Promise<ReportState> {
     const [maybeNode, nextRoundAt] = await Promise.all([
       this.api.query.fileStorage.nodes(this.account),
       this.api.query.fileStorage.nextRoundAt(),
@@ -225,7 +225,7 @@ export default class Chain {
 
   private initAccount() {
     const keyring = new Keyring({ type: "sr25519" });
-    this.keyPair = keyring.createFromUri(config.secret);
+    this.keyPair = keyring.createFromUri(config.mnemonic);
   }
 
   private async listenBlocks() {

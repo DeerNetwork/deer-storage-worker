@@ -24,6 +24,7 @@
     "axios": "^0.21.1",
     "ipfs-http-client": "^50.1.2",
     "lodash": "^4.17.21",
+    "read-env": "^2.0.0",
     "tiny-typed-emitter": "^2.1.0",
     "winston": "^3.3.3"
   },

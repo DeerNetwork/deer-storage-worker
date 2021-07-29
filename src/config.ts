@@ -1,14 +1,10 @@
-import * as path from "path";
+import { readEnv } from "read-env";
 import * as _ from "lodash";
 
 const config =  {
   blockSecs: 6,
-  secret: "//Alice",
-  log: {
-    level: "info",
-    dir: process.cwd(),
-    console: true,
-  },
+  mnemonic: "//Alice",
+  log_level: "info",
   chain: {
     endpoint: "ws://loclahost:9494",
   },
@@ -25,14 +21,6 @@ const config =  {
   },
 };
 
-try {
-  const localConfig = require("./config.json");
-  _.merge(config, localConfig);
-} catch {
-  try {
-    const localConfig = require(path.resolve(__dirname, "../config.json"));
-    _.merge(config, localConfig);
-  } catch {}
-}
+_.merge(config, readEnv("WORKER"));
 
 export default config;

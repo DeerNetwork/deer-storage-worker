@@ -6,6 +6,7 @@ import { fatal, logger, sleep } from "./utils";
 import { MaxPriorityQueue } from "@datastructures-js/priority-queue";
 
 type Task = AddFileTask | DelFileTask | ReportTask;
+
 interface AddFileTask {
   type: "addFile",
   cid: string;
@@ -29,6 +30,7 @@ class Engine {
   private period = Peroid.Idle; 
   private files: string[] = [];
   private isReporting = false;
+
   public async init() {
     this.chain = new Chain();
     this.ipfs = makeIpfs();
@@ -158,7 +160,7 @@ class Engine {
 
   private async commitReport() {
     try {
-      await this.chain.syncReportState();
+      await this.chain.getReportState();
       await this.teaclave.commitReport(this.chain.reportState.rid);
       logger.info("✨ Commit report successed");
     } catch (e) {
