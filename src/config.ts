@@ -4,17 +4,17 @@ import * as _ from "lodash";
 const config =  {
   blockSecs: 6,
   mnemonic: "//Alice",
-  log_level: "info",
+  logLevel: "info",
   chain: {
-    endpoint: "ws://loclahost:9494",
+    endpoint: "ws://127.0.0.1:9944",
   },
   ipfs: {
-    url: "http://localhost:5001",
+    url: "http://127.0.0.1:5001",
     pinTimeout: 3000,
   },
   teaclave: {
-    baseURL: "http://localhost:2121",
-    timeout: 3000,
+    baseURL: "http://127.0.0.1:2121",
+    timeout: 10000,
     headers: {
       "Content-Type": "application/json",
     },

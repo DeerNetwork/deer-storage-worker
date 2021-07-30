@@ -5,3 +5,4 @@ yarn.lock
 .npmrc
 types.json
 tmp
+.vscode

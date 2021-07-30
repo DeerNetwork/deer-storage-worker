@@ -2,7 +2,7 @@ import {createLogger, format, transports} from "winston";
 import config from "./config";
 
 export const logger = createLogger({
-  level: config.log_level,
+  level: config.logLevel,
   format: format.combine(
     format.timestamp({
       format: "YYYY-MM-DD HH:mm:ss",
@@ -26,9 +26,11 @@ export function hex2str(hex: string) {
   return Buffer.from(hex.substring(2), "hex").toString();
 }
 
+export function formatHexArr(arr: number[]) {
+  return "0x" + Buffer.from(arr).toString("hex");
+}
+
 export function fatal(msg: string) {
-  logger.error(`💥 Fatal error: ${msg}`);
-  setTimeout(() => {
-    process.exit();
-  }, 0);
+  logger.error(`💥 Fatal ${msg}`);
+  process.exit();
 }

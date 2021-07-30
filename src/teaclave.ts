@@ -41,7 +41,7 @@ export default class Teaclave {
   }
 
   public async attest(): Promise<AttestRes> {
-    return this.wrapRpc("attest", () => this.api.get("/attest"));
+    return this.wrapRpc("attest", () => this.api.get("/attest", { timeout: 60000 }));
   }
 
   public async preparePeport(files: string[]): Promise<PrepareReportRes> {
@@ -68,14 +68,14 @@ export default class Teaclave {
     try {
       const res = await rpc();
       logger.info(
-        `  ↪ 💖  Call ${name}, response: ${JSON.stringify(res.data)}`
+        ` ↪ 💖  Call ${name}, response: ${JSON.stringify(res.data)}`
       );
       if (res.status == 200) {
         return res.data;
       }
-      logger.error(`💥  Error call teaclave.${name}: ${res.data}`);
+      logger.error(`💥 Call teaclave.${name}: ${res.data}`);
     } catch (e) {
-      logger.error(`💥  Error call teaclave.${name}: ${e.toString()}`);
+      logger.error(`💥 Call teaclave.${name}: ${e.message}`);
     }
   }
 

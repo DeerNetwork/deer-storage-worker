@@ -5,7 +5,7 @@ import { DispatchError } from "@polkadot/types/interfaces";
 import { ITuple } from "@polkadot/types/types";
 import * as BN from "bn.js";
 import config from "./config";
-import { logger, sleep, hex2str} from "./utils";
+import { logger, sleep, hex2str, formatHexArr} from "./utils";
 import emitter from "./emitter";
 import { AttestRes, PrepareReportRes } from "./teaclave";
 import { Keyring } from "@polkadot/keyring";
@@ -64,9 +64,9 @@ export default class Chain {
       provider: new WsProvider(chainConfig.endpoint),
       typesBundle: typesBundleForPolkadot,
     });
-    this.initAccount();
 
     await this.waitReady();
+    await this.initAccount();
     Promise.all([
       await this.syncConstants(),
       await this.getReportState(),
@@ -136,20 +136,21 @@ export default class Chain {
 
   public async register(data: AttestRes) {
     const tx = await this.api.tx.fileStorage.register(
-      Buffer.from(data.machine_id),
+      formatHexArr(data.machine_id),
       data.ias_cert,
       data.ias_sig,
       data.ias_body,
-      Buffer.from(data.sig),
+      formatHexArr(data.sig),
     );
     return this.sendTx(tx);
   }
 
-  public async prepareReport(machine: string, data: PrepareReportRes, settleFiles: string[]) {
+  public async reportWork(machine: string, data: PrepareReportRes, settleFiles: string[]) {
+    logger.debug(`Report works with args: ${machine} ${JSON.stringify(data)}, ${JSON.stringify(settleFiles)}`);
     const tx = await this.api.tx.fileStorage.report(
-      Buffer.from(machine),
+      machine,
       data.rid,
-      Buffer.from(data.sig),
+      formatHexArr(data.sig),
       data.add_files,
       data.del_files,
       data.power,
@@ -230,6 +231,7 @@ export default class Chain {
 
   private async listenBlocks() {
     this.unsubscribeBlocks = await this.api.rpc.chain.subscribeFinalizedHeads(header => {
+      logger.debug(`New block ${header.number.toString()} ${header.hash.toHex()}`);
       emitter.emit("header", header);
     });
   }
@@ -237,6 +239,7 @@ export default class Chain {
   private async listenEvents() {
     this.unsubscribeEvents = await this.api.query.system.events((events) => {
       for (const ev of events) {
+        logger.debug(`New event ${JSON.stringify(ev.toHuman())}`);
         const { event: { data, method } } = ev;
         if (method === "StoreFileSubmitted") {
           const cid = hex2str(data[0].toString());
@@ -267,6 +270,7 @@ export default class Chain {
     const values = await Promise.all(keys.map(name => (this.api.consts.fileStorage[name] as any).toNumber()));
     this.constants = keys.reduce((acc, cur, i) => {
       acc[cur] = values[i];
+      return acc;
     }, {} as any);
   }
 

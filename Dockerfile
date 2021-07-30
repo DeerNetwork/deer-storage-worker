@@ -6,5 +6,5 @@ RUN yarn --prod && rm -rf .npmrc
 FROM node:14-alpine
 WORKDIR /app
 COPY --from=0 /app .
-COPY dist .
+COPY dist ./dist
 CMD ["node", "./dist/index.js"]

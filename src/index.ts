@@ -37,9 +37,14 @@ class Engine {
     this.teaclave = new Teaclave();
     this.queue = new MaxPriorityQueue();
     await this.chain.init();
-    await this.initEnclave();
-    await this.chain.listen();
-    await this.runQueue();
+    let isTeaclaveOk = false;
+    do {
+      isTeaclaveOk = await this.initTeaclave();
+      if (!isTeaclaveOk) await sleep(10000);
+    } while(!isTeaclaveOk);
+
+    this.chain.listen();
+    this.runQueue();
 
     emitter.on("header", async header => {
       try {
@@ -56,7 +61,12 @@ class Engine {
       }
     });
     emitter.on("file:add", cid => {
-      if (this.isReporting) return;
+      if (this.isReporting) {
+        logger.debug(`Skip enqueue addFile(${cid})`);
+        return;
+      } else {
+        logger.debug(`Enqueue addFile(${cid})`);
+      }
       if (this.period === Peroid.Prepare) {
         this.queue.enqueue({ type: "addFile", cid }, 3);
       } else if (this.period === Peroid.Idle) {
@@ -64,60 +74,66 @@ class Engine {
       }
     });
     emitter.on("file:del", async cid => {
+      logger.debug(`Enqueue delFile(${cid})`);
       this.queue.enqueue({ type: "delFile", cid }, 1);
     });
     emitter.on("reported", async () => {
+      logger.debug("Node reported works.");
       this.commitReport();
     });
   }
 
-  private async initEnclave() {
+  private async initTeaclave() {
     const maybeStash = await this.chain.getStash();
     if (maybeStash.isNone) {
-      fatal("Account is not stashed");
+      logger.warn("💥 Account is not stashed");
+      return false;
     }
     const stash = maybeStash.unwrap();
     if (stash.machine_id.isNone) {
       const attest = await this.teaclave.attest();
-      logger.info(`💸 Registering node with ${JSON.stringify(attest)}`);
+      if (!attest) return false;
       const res = await this.chain.register(attest);
       if (res.status === "failed") {
-        fatal("💥 Fail to register node");
+        fatal("Fail to register node");
+        return false;
       }
       logger.info("✨ Register node successed");
-    } else {
-      const system = await this.teaclave.system();
-      const machine = stash.machine_id.unwrap().toString();
-      if (machine !== system.machine_id) {
-        fatal(`💥 On chain machine is ${system.machine_id}, current machind is ${machine}`);
-      }
-      this.machine = machine;
+      return false;
     }
+    const system = await this.teaclave.system();
+    const machine = stash.machine_id.unwrap().toString();
+    if (machine !== "0x" + system.machine_id) {
+      fatal(`💥 On chain machine is ${system.machine_id}, current machind is ${machine}`);
+      return false;
+    }
+    this.machine = machine;
+    return true;
   }
 
   private async runQueue() {
-    while (true) {
-      if (this.queue.isEmpty()) {
-        await sleep(2000);
-      }
-      const { element: task } = this.queue.dequeue();
-      if (task.type === "addFile") {
-        await this.addFile(task.cid);
-      } else if (task.type === "delFile") {
-        await this.delFile(task.cid);
-      } else if (task.type === "report") {
-        await this.report();
-      }
+    while (this.queue.isEmpty()) {
+      await sleep(2000);
+    }
+    const { element: task } = this.queue.dequeue();
+    if (task.type === "addFile") {
+      await this.addFile(task.cid);
+    } else if (task.type === "delFile") {
+      await this.delFile(task.cid);
+    } else if (task.type === "report") {
+      await this.report();
     }
   }
 
   private async addFile(cid) {
     try {
+      logger.debug(`Execute addFile ${cid}`);
       const fileState = await this.chain.getFileState(cid);
       if (fileState.included) return;
       await this.ipfs.pin(cid);
       await this.teaclave.addFile(cid);
       this.files.push(cid);
+      logger.info(`✨ AddFile ${cid} success`);
     } catch (e) {
       logger.error(`💥 Fail to add file ${cid}, ${e.toString()}`);
     }
@@ -125,8 +141,10 @@ class Engine {
 
   private async delFile(cid) {
     try {
+      logger.debug(`Execute delFile ${cid}`);
       await this.teaclave.delFile(cid);
       await this.ipfs.unpin(cid);
+      logger.info(`✨ DelFile ${cid} success`);
     } catch (e) {
       logger.error(`💥 Fail to del file ${cid}, ${e.toString()}`);
     }
@@ -134,6 +152,7 @@ class Engine {
 
   private async report() {
     try {
+      logger.debug("Worker trying to report works");
       const fileStates = await Promise.all(this.files.map(async cid => {
         return this.chain.getFileState(cid);
       }));
@@ -145,9 +164,9 @@ class Engine {
       }
       const settleFiles = [];
       const reportData = await this.teaclave.preparePeport(toAddFiles);
-      const res = await this.chain.prepareReport(this.machine, reportData, settleFiles);
+      const res = await this.chain.reportWork(this.machine, reportData, settleFiles);
       if (res.status === "failed") {
-        fatal("💥 Fail to report work");
+        fatal("Fail to report work");
       }
       logger.info("✨ Report node successed");
     } catch (e) {
@@ -160,6 +179,7 @@ class Engine {
 
   private async commitReport() {
     try {
+      logger.debug("Worker trying to commit report");
       await this.chain.getReportState();
       await this.teaclave.commitReport(this.chain.reportState.rid);
       logger.info("✨ Commit report successed");
@@ -172,4 +192,5 @@ class Engine {
 const engine = new Engine();
 engine.init().catch(e => {
   logger.error(`💥 Caught on engine.init: ${e.toString()}`);
+  process.exit(1);
 });
