@@ -73,7 +73,7 @@ export default class Chain {
     ]);
   }
 
-  public get account() {
+  public get address() {
     return this.keyPair.address;
   }
 
@@ -86,7 +86,7 @@ export default class Chain {
     const maybeOrder = await this.api.query.fileStorage.fileOrders(cid);
     if (maybeOrder.isSome) {
       const order = maybeOrder.unwrap();
-      const included = !!order.replicas.find(v => v.toHuman() === this.account);
+      const included = !!order.replicas.find(v => v.eq(this.address));
       return { included, numReplicas: order.replicas.length, cid };
     } 
     const file = await this.api.query.fileStorage.storeFiles(cid);
@@ -96,7 +96,7 @@ export default class Chain {
 
   public async getReportState(): Promise<ReportState> {
     const [maybeNode, nextRoundAt] = await Promise.all([
-      this.api.query.fileStorage.nodes(this.account),
+      this.api.query.fileStorage.nodes(this.address),
       this.api.query.fileStorage.nextRoundAt(),
     ]);
     const node = maybeNode.unwrapOrDefault();
@@ -127,7 +127,7 @@ export default class Chain {
   }
 
   public async getStash() {
-    return await this.api.query.fileStorage.stashs(this.account);
+    return await this.api.query.fileStorage.stashs(this.address);
   }
 
   public async getRegister(machine: string) {
@@ -251,7 +251,7 @@ export default class Chain {
           const cid = hex2str(data[0].toString());
           emitter.emit("file:del", cid);
         } else if (method === "NodeReported") {
-          if (this.account === data[0].toHuman()) {
+          if (data[0].eq(this.address)) {
             emitter.emit("reported");
           }
         }

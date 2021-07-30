@@ -5,7 +5,7 @@ import emitter from "./emitter";
 import { fatal, logger, sleep } from "./utils";
 import { MaxPriorityQueue } from "@datastructures-js/priority-queue";
 
-type Task = AddFileTask | DelFileTask | ReportTask;
+type Task = AddFileTask | DelFileTask | ReportTask | CommitTask;
 
 interface AddFileTask {
   type: "addFile",
@@ -19,6 +19,10 @@ interface DelFileTask {
 
 interface ReportTask {
   type: "report",
+}
+
+interface CommitTask {
+  type: "commit",
 }
 
 class Engine {
@@ -78,8 +82,8 @@ class Engine {
       this.queue.enqueue({ type: "delFile", cid }, 1);
     });
     emitter.on("reported", async () => {
-      logger.debug("Node reported works.");
-      this.commitReport();
+      logger.debug("Enqueue commit");
+      this.queue.enqueue({ type: "commit" }, 4);
     });
   }
 
@@ -122,6 +126,8 @@ class Engine {
       await this.delFile(task.cid);
     } else if (task.type === "report") {
       await this.report();
+    } else if (task.type === "commit") {
+      await this.commit();
     }
   }
 
@@ -177,7 +183,7 @@ class Engine {
     }
   }
 
-  private async commitReport() {
+  private async commit() {
     try {
       logger.debug("Worker trying to commit report");
       await this.chain.getReportState();
