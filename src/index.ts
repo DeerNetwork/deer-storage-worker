@@ -36,6 +36,7 @@ class Engine {
 
     this.chain.listen();
     this.runIpfsQueue();
+    this.runTeaQueue();
 
     emitter.on("header", async header => {
       try {
@@ -113,10 +114,10 @@ class Engine {
   }
 
   private async runTeaQueue() {
-    while (this.ipfsQueue.isEmpty()) {
+    while (this.teaQueue.isEmpty()) {
       await sleep(2000);
     }
-    const { element: task } = this.ipfsQueue.dequeue();
+    const { element: task } = this.teaQueue.dequeue();
     if (task.type === "addFile") {
       await this.addFile(task.cid);
     } else if (task.type === "delFile") {

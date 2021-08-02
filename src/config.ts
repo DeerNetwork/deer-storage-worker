@@ -4,7 +4,7 @@ import * as _ from "lodash";
 const config =  {
   blockSecs: 6,
   mnemonic: "//Alice",
-  logLevel: "info",
+  logLevel: "debug",
   chain: {
     endpoint: "ws://127.0.0.1:9944",
   },
