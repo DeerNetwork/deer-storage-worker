@@ -100,10 +100,16 @@ export default class Chain {
       this.api.query.fileStorage.nextRoundAt(),
     ]);
     const node = maybeNode.unwrapOrDefault();
+    let reportedAt: number;
+    if (maybeNode.isNone) {
+      reportedAt = _.random(0, this.constants.roundDuration);
+    } else {
+      reportedAt = node.reported_at.toNumber();
+    }
     this.reportState = {
       isReported: node.reported_at.gt(nextRoundAt.sub(new BN(this.constants.roundDuration))),
       rid: node.rid.toNumber(),
-      reportedAt: node.reported_at.toNumber(),
+      reportedAt,
       nextRoundAt: nextRoundAt.toNumber(),
     };
     return this.reportState;
