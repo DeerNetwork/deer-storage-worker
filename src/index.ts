@@ -5,24 +5,9 @@ import emitter from "./emitter";
 import { fatal, logger, sleep } from "./utils";
 import { MaxPriorityQueue } from "@datastructures-js/priority-queue";
 
-type Task = AddFileTask | DelFileTask | ReportTask | CommitTask;
-
-interface AddFileTask {
-  type: "addFile",
-  cid: string;
-}
-
-interface DelFileTask {
-  type: "delFile",
-  cid: string,
-}
-
-interface ReportTask {
-  type: "report",
-}
-
-interface CommitTask {
-  type: "commit",
+interface Task {
+  type: "addFile" | "delFile" | "report" | "commit",
+  cid?: string,
 }
 
 class Engine {
@@ -30,7 +15,8 @@ class Engine {
   private ipfs: Ipfs;
   private teaclave: Teaclave;
   private machine: string;
-  private queue: MaxPriorityQueue<Task>;
+  private ipfsQueue: MaxPriorityQueue<Task>;
+  private teaQueue: MaxPriorityQueue<Task>;
   private period = Peroid.Idle; 
   private files: string[] = [];
   private isReporting = false;
@@ -39,7 +25,8 @@ class Engine {
     this.chain = new Chain();
     this.ipfs = makeIpfs();
     this.teaclave = new Teaclave();
-    this.queue = new MaxPriorityQueue();
+    this.ipfsQueue = new MaxPriorityQueue();
+    this.teaQueue = new MaxPriorityQueue();
     await this.chain.init();
     let isTeaclaveOk = false;
     do {
@@ -48,7 +35,7 @@ class Engine {
     } while(!isTeaclaveOk);
 
     this.chain.listen();
-    this.runQueue();
+    this.runIpfsQueue();
 
     emitter.on("header", async header => {
       try {
@@ -56,7 +43,7 @@ class Engine {
         this.period = period;
         if (this.period === Peroid.Enforce) {
           if (!this.isReporting) {
-            this.queue.enqueue({ type: "report" }, 4);
+            this.teaQueue.enqueue({ type: "report" }, 4);
             this.isReporting = true;
           }
         }
@@ -72,18 +59,18 @@ class Engine {
         logger.debug(`Enqueue addFile(${cid})`);
       }
       if (this.period === Peroid.Prepare) {
-        this.queue.enqueue({ type: "addFile", cid }, 3);
+        this.ipfsQueue.enqueue({ type: "addFile", cid }, 3);
       } else if (this.period === Peroid.Idle) {
-        this.queue.enqueue({ type: "addFile", cid }, 2);
+        this.ipfsQueue.enqueue({ type: "addFile", cid }, 2);
       }
     });
     emitter.on("file:del", async cid => {
       logger.debug(`Enqueue delFile(${cid})`);
-      this.queue.enqueue({ type: "delFile", cid }, 1);
+      this.teaQueue.enqueue({ type: "delFile", cid }, 1);
     });
     emitter.on("reported", async () => {
       logger.debug("Enqueue commit");
-      this.queue.enqueue({ type: "commit" }, 4);
+      this.teaQueue.enqueue({ type: "commit" }, 4);
     });
   }
 
@@ -115,11 +102,21 @@ class Engine {
     return true;
   }
 
-  private async runQueue() {
-    while (this.queue.isEmpty()) {
+  private async runIpfsQueue() {
+    while (this.ipfsQueue.isEmpty()) {
       await sleep(2000);
     }
-    const { element: task } = this.queue.dequeue();
+    const { element: task } = this.ipfsQueue.dequeue();
+    if (task.type === "addFile") {
+      await this.addIpfsFile(task.cid);
+    }
+  }
+
+  private async runTeaQueue() {
+    while (this.ipfsQueue.isEmpty()) {
+      await sleep(2000);
+    }
+    const { element: task } = this.ipfsQueue.dequeue();
     if (task.type === "addFile") {
       await this.addFile(task.cid);
     } else if (task.type === "delFile") {
@@ -131,12 +128,24 @@ class Engine {
     }
   }
 
+  private async addIpfsFile(cid) {
+    try {
+      logger.debug(`Execute addIpfsFile ${cid}`);
+      const fileState = await this.chain.getFileState(cid);
+      if (fileState.included) return;
+      await this.ipfs.pin(cid);
+      this.teaQueue.enqueue({ type: "addFile", cid }, 3);
+      logger.info(`✨ AddIpfsFile ${cid} success`);
+    } catch (e) {
+      logger.error(`💥 Fail to add ipfs file ${cid}, ${e.toString()}`);
+    }
+  }
+
   private async addFile(cid) {
     try {
       logger.debug(`Execute addFile ${cid}`);
       const fileState = await this.chain.getFileState(cid);
       if (fileState.included) return;
-      await this.ipfs.pin(cid);
       await this.teaclave.addFile(cid);
       this.files.push(cid);
       logger.info(`✨ AddFile ${cid} success`);
@@ -177,10 +186,9 @@ class Engine {
       logger.info("✨ Report node successed");
     } catch (e) {
       logger.error(`💥 Fail to report ${e.toString()}`);
-    } finally {
-      this.files = [];
-      this.isReporting = false;
-    }
+    } 
+    this.files = [];
+    this.isReporting = false;
   }
 
   private async commit() {

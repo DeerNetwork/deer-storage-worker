@@ -237,7 +237,7 @@ export default class Chain {
 
   private async listenBlocks() {
     this.unsubscribeBlocks = await this.api.rpc.chain.subscribeFinalizedHeads(header => {
-      logger.debug(`New block ${header.number.toString()} ${header.hash.toHex()}`);
+      logger.info(`New block ${header.number.toString()} ${header.hash.toHex()}`);
       emitter.emit("header", header);
     });
   }
