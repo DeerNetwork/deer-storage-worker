@@ -27,6 +27,11 @@ export interface PrepareReportRes {
   sig: number[];
 }
 
+export interface TeaFile {
+  cid: string;
+  fileSize: number;
+  committed: boolean;
+}
 export default class Teaclave {
   private readonly api: AxiosInstance;
   constructor() {
@@ -52,16 +57,24 @@ export default class Teaclave {
     return this.wrapRpc("commitReport", () => this.api.post(`/report/commit/${rid}`));
   }
 
-  public async addFile(cid: number): Promise<any> {
+  public async addFile(cid: string): Promise<{ size: number }> {
     return this.wrapRpc("addFile", () => this.api.post(`/files/${cid}`));
   }
 
-  public async delFile(cid: number): Promise<any> {
+  public async delFile(cid: string): Promise<any> {
     return this.wrapRpc("delFile", () => this.api.delete(`/files/${cid}`));
   }
 
-  public async inspectFiles(): Promise<[string, number, boolean][]> {
-    return this.wrapRpc("inspectFiles", () => this.api.get("/files"));
+  public async checkFile(cid: string): Promise<TeaFile> {
+    const [_, fileSize, committed] = await this.wrapRpc<[string, number, boolean]>("checkFile", () => this.api.get(`/files/${cid}/status`));
+    return { cid, fileSize, committed }
+  }
+
+  public async inspectFiles(): Promise<TeaFile[]> {
+    const list = await this.wrapRpc<[string, number, boolean][]>("inspectFiles", () => this.api.get("/files"));
+    return list.map(([cid, fileSize, committed]) => {
+      return { cid, fileSize, committed }
+    });
   }
 
   async wrapRpc<T>(name: string, rpc: () => Promise<AxiosResponse<T>>): Promise<T> {

@@ -22,13 +22,12 @@ export interface ChainConstants {
 
 export interface FileState {
   cid: string;
-  included: boolean;
+  reported: boolean;
   numReplicas: number;
 }
 
 export interface ReportState {
-  isReported: boolean;
-  checkedAt: number;
+  reported: boolean;
   rid: number;
   reportedAt: number;
   nextRoundAt: number;
@@ -53,11 +52,11 @@ export default class Chain {
   public constants: ChainConstants;
   public keyPair: KeyringPair;
   public reportState: ReportState;
+  public now: number;
 
   private api: ApiPromise;
   private unsubscribeEvents: () => void;
   private unsubscribeBlocks: () => void;
-  private currentBn: number = 0;
 
   public async init() {
     await this.stop();
@@ -84,16 +83,12 @@ export default class Chain {
     await this.listenEvents();
   }
   
-  public async getFileState(cid: string): Promise<FileState> {
-    const maybeOrder = await this.api.query.fileStorage.fileOrders(cid);
-    if (maybeOrder.isSome) {
-      const order = maybeOrder.unwrap();
-      const included = !!order.replicas.find(v => v.eq(this.address));
-      return { included, numReplicas: order.replicas.length, cid };
-    } 
-    const file = await this.api.query.fileStorage.storeFiles(cid);
-    if (file.isNone) return null;
-    return { included: false, numReplicas: 0, cid };
+  public async getFileOrder(cid: string) {
+    return this.api.query.fileStorage.fileOrders(cid);
+  }
+
+  public async getStoreFie(cid: string) {
+    return this.api.query.fileStorage.storeFiles(cid);
   }
 
   public async getReportState(): Promise<ReportState> {
@@ -109,8 +104,7 @@ export default class Chain {
       reportedAt = node.reported_at.toNumber();
     }
     this.reportState = {
-      isReported: node.reported_at.gt(nextRoundAt.sub(new BN(this.constants.roundDuration))),
-      checkedAt: this.currentBn,
+      reported: node.reported_at.gt(nextRoundAt.sub(new BN(this.constants.roundDuration))),
       rid: node.rid.toNumber(),
       reportedAt,
       nextRoundAt: nextRoundAt.toNumber(),
@@ -119,24 +113,21 @@ export default class Chain {
   }
 
   public async detectPeroid(now: number) {
-    if (this.reportState.checkedAt - this.currentBn > this.constants.roundDuration / 2) {
-      await this.getReportState();
-    }
-    if (!this.reportState.isReported) {
+    if (!this.reportState.reported) {
       if (this.reportState.nextRoundAt - now < ENFORCE_R * this.constants.roundDuration) {
         return Peroid.Enforce;
       }
       const passTime = now - this.reportState.reportedAt;
-      if (passTime > this.constants.roundDuration) {
-        return Peroid.Enforce;
-      }
-      const r = passTime / this.constants.roundDuration;
+      const r = 1 - passTime / this.constants.roundDuration;
       if (r < ENFORCE_R) {
         return Peroid.Enforce;
       }
       if (r < PREPARE_R) {
         return Peroid.Prepare;
       } 
+    }
+    if (now % (this.constants.roundDuration / 10)) {
+      this.getReportState();
     }
     return Peroid.Idle;
   }
@@ -175,7 +166,17 @@ export default class Chain {
     return this.sendTx(tx);
   }
 
-  public sendTx(tx: SubmittableExtrinsic): Promise<TxRes> {
+  public async listStoreFiles() {
+    const storeFiles = await this.api.query.fileStorage.storeFiles.entries();
+    return storeFiles.map(storeFile => ({ cid: hex2str(storeFile[0].args[0].toString()), storeFile: storeFile[1].unwrap() }));
+  }
+
+  public async listFileOrders() {
+    const fileOrders = await this.api.query.fileStorage.fileOrders.entries();
+    return fileOrders.map(fileOrder => ({ cid: hex2str(fileOrder[0].args[0].toString()), fileOrder: fileOrder[1].unwrap() }))
+  }
+
+  private sendTx(tx: SubmittableExtrinsic): Promise<TxRes> {
     return new Promise((resolve, reject) => {
       tx.signAndSend(this.keyPair, ({events = [], status}) => {
         logger.info(
@@ -246,7 +247,7 @@ export default class Chain {
 
   private async listenBlocks() {
     this.unsubscribeBlocks = await this.api.rpc.chain.subscribeFinalizedHeads(header => {
-      this.currentBn = header.number.toNumber();
+      this.now = header.number.toNumber();
       emitter.emit("header", header);
     });
   }
