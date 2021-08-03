@@ -20,12 +20,6 @@ export interface ChainConstants {
   maxReportFiles: number;
 }
 
-export interface FileState {
-  cid: string;
-  reported: boolean;
-  numReplicas: number;
-}
-
 export interface ReportState {
   reported: boolean;
   rid: number;

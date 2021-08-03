@@ -196,10 +196,8 @@ class Engine {
   private async delFile(cid) {
     try {
       logger.debug(`Execute delFile ${cid}`);
-      this.store.deleteFile(cid);
-      await this.teaclave.delFile(cid);
-      await this.ipfs.pinRm(cid);
-      logger.info(`✨ DelFile ${cid} success`);
+      await this.store.checkDeleteCid(cid);
+      await this.store.deleteDirtyFile(cid);
     } catch (e) {
       logger.error(`💥 Fail to del file ${cid}, ${e.toString()}`);
     }
@@ -238,16 +236,17 @@ class Engine {
   private async afterCommit() {
     try {
       await this.store.checkReportCids(this.reportCids);
-      const { ipfsFiles, teaFiles } = await this.store.getPendingFiles();
-      logger.debug(`Get pendding files ${JSON.stringify({ ipfsFiles, teaFiles })}`);
-      for (const cid of ipfsFiles) {
+      const pendingFiles = await this.store.getPendingFiles();
+      logger.debug(`Get pendding files ${JSON.stringify(pendingFiles)}`);
+      for (const cid of pendingFiles.ipfsFiles) {
         this.ipfsQueue.enqueue({ type: "addFile", cid }, 2);
       }
-      for (const cid of teaFiles) {
+      for (const cid of pendingFiles.teaFiles) {
         this.teaQueue.enqueue({ type: "addFile", cid }, 3);
       }
     } catch {}
   }
+
 }
 
 const engine = new Engine();

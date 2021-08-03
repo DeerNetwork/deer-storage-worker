@@ -15,9 +15,16 @@ export default function makeIpfs() {
     },
     async pinRm(cid: string): Promise<boolean> {
       const id = new CID(cid);
-      const pin = await ipfs.pin.rm(cid);
-      logger.debug(`ipfs.rmPin ${cid}`);
-      return id.equals(pin);
+      try {
+        const pin = await ipfs.pin.rm(cid);
+        logger.debug(`ipfs.rmPin ${cid}`);
+        return id.equals(pin);
+      } catch (err) {
+        if (/not pinned/.test(err.message)) {
+          return true;
+        }
+        throw err;
+      }
     },
     async pinLs(): Promise<string[]> {
       const list = [];

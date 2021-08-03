@@ -89,6 +89,7 @@ export default class Teaclave {
       logger.error(`💥 Call teaclave.${name}: ${res.data}`);
     } catch (e) {
       logger.error(`💥 Call teaclave.${name}: ${e.message}`);
+      throw e;
     }
   }
 
