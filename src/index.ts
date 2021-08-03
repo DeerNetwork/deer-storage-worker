@@ -1,4 +1,4 @@
-import Chain, { Peroid } from "./chain";
+import Chain from "./chain";
 import makeIpfs, { Ipfs } from "./ipfs";
 import Teaclave from "./teaclave";
 import Store from "./store";
@@ -19,7 +19,6 @@ class Engine {
   private machine: string;
   private ipfsQueue: MaxPriorityQueue<Task>;
   private teaQueue: MaxPriorityQueue<Task>;
-  private period = Peroid.Idle; 
   private isReporting = false;
   private reportCids: string[];
 
@@ -46,16 +45,13 @@ class Engine {
     emitter.on("header", async header => {
       try {
         const blockNum = header.number.toNumber();
-        const period = await this.chain.detectPeroid(blockNum);
-        const { nextRoundAt, reportedAt }= this.chain.reportState;
+        const sholdReport = await this.chain.shouldReport(blockNum);
+        const { nextReportAt, reportedAt } = this.chain.reportState;
         const { isReporting } = this;
-        logger.debug(`blockNum=${blockNum}, period=${period}, ${JSON.stringify({ nextRoundAt, reportedAt, isReporting })}`);
-        this.period = period;
-        if (this.period === Peroid.Enforce) {
-          if (!this.isReporting) {
+        logger.debug(`blockNum=${blockNum}, ${JSON.stringify({ sholdReport, reportedAt, nextReportAt, isReporting })}`);
+        if (sholdReport && !this.isReporting) {
             this.teaQueue.enqueue({ type: "report" }, 4);
             this.isReporting = true;
-          }
         }
       } catch (e) {
         logger.error(`💥 Caught on event header: ${e.toString()}`);
@@ -77,11 +73,7 @@ class Engine {
         return;
       } 
       logger.debug(`IpfsQueue addFile ${cid}`);
-      if (this.period === Peroid.Prepare) {
-        this.ipfsQueue.enqueue({ type: "addFile", cid }, 3);
-      } else if (this.period === Peroid.Idle) {
-        this.ipfsQueue.enqueue({ type: "addFile", cid }, 2);
-      }
+      this.ipfsQueue.enqueue({ type: "addFile", cid }, 3);
     });
     emitter.on("file:del", async cid => {
       logger.debug(`TeaQueue delFile ${cid}`);

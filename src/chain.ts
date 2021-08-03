@@ -23,6 +23,7 @@ export interface ChainConstants {
 export interface ReportState {
   reported: boolean;
   rid: number;
+  nextReportAt: number;
   reportedAt: number;
   nextRoundAt: number;
 }
@@ -32,21 +33,11 @@ export interface TxRes {
   message?: string;
   details?: string;
 }
-
-export enum Peroid {
-  Idle,
-  Prepare,
-  Enforce,
-}
-
-const ENFORCE_R = 0.05;
-const PREPARE_R = 0.1;
-
 export default class Chain {
   public constants: ChainConstants;
   public keyPair: KeyringPair;
   public reportState: ReportState;
-  public now: number;
+  public now: number = 0;
 
   private api: ApiPromise;
   private unsubscribeEvents: () => void;
@@ -90,15 +81,30 @@ export default class Chain {
       this.api.query.fileStorage.nodes(this.address),
       this.api.query.fileStorage.nextRoundAt(),
     ]);
+    const currentRoundAt = nextRoundAt.sub(new BN(this.constants.roundDuration));
     const node = maybeNode.unwrapOrDefault();
-    let reportedAt: number;
+    let reportedAt: number; 
+    let nextReportAt: number;
     if (maybeNode.isNone) {
-      reportedAt = _.random(0, this.constants.roundDuration);
+      if (this.now === 0) {
+        const header = await this.api.rpc.chain.getHeader();
+        this.now = header.number.toNumber();
+      }
+      if (nextRoundAt.toNumber() - this.now < 3) {
+        nextReportAt = nextRoundAt.toNumber() + _.random(0, 30);
+      } else {
+        nextReportAt = _.random(this.now, nextRoundAt.toNumber());
+      }
     } else {
       reportedAt = node.reported_at.toNumber();
+      nextReportAt = reportedAt + this.constants.roundDuration;
+      if (nextRoundAt.toNumber() + this.constants.roundDuration - nextReportAt < 3) {
+        nextReportAt -= _.random(0, 10);
+      }
     }
     this.reportState = {
-      reported: node.reported_at.gt(nextRoundAt.sub(new BN(this.constants.roundDuration))),
+      nextReportAt,
+      reported: node.reported_at.gt(currentRoundAt),
       rid: node.rid.toNumber(),
       reportedAt,
       nextRoundAt: nextRoundAt.toNumber(),
@@ -106,24 +112,14 @@ export default class Chain {
     return this.reportState;
   }
 
-  public async detectPeroid(now: number) {
-    if (!this.reportState.reported) {
-      if (this.reportState.nextRoundAt - now < ENFORCE_R * this.constants.roundDuration) {
-        return Peroid.Enforce;
-      }
-      const passTime = now - this.reportState.reportedAt;
-      const r = 1 - passTime / this.constants.roundDuration;
-      if (r < ENFORCE_R) {
-        return Peroid.Enforce;
-      }
-      if (r < PREPARE_R) {
-        return Peroid.Prepare;
-      } 
-    }
-    if (now % (this.constants.roundDuration / 10)) {
+  public async shouldReport(now: number) {
+    if (now % (this.constants.roundDuration / 10) === 0) {
       this.getReportState();
     }
-    return Peroid.Idle;
+    if (!this.reportState.reported) {
+      return this.now >  this.reportState.nextReportAt
+    }
+    return false;
   }
 
   public async getStash() {
@@ -240,7 +236,7 @@ export default class Chain {
   }
 
   private async listenBlocks() {
-    this.unsubscribeBlocks = await this.api.rpc.chain.subscribeFinalizedHeads(header => {
+    this.unsubscribeBlocks = await this.api.rpc.chain.subscribeNewHeads(header => {
       this.now = header.number.toNumber();
       emitter.emit("header", header);
     });
