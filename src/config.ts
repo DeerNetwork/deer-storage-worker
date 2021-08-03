@@ -10,6 +10,7 @@ const config =  {
   },
   ipfs: {
     url: "http://127.0.0.1:5001",
+    maxRetries: 5,
     pinTimeout: 30000,
   },
   teaclave: {

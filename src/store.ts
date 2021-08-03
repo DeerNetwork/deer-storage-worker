@@ -3,6 +3,7 @@ import Chain from "./chain";
 import Teaclave, { TeaFile } from "./teaclave";
 import { FileOrder, StoreFile } from "@nft360/type-definitions/dist/interfaces/fileStorage";
 import { logger } from "./utils";
+import config from "./config";
 
 export interface File {
   reserved?: BigInt,
@@ -12,6 +13,7 @@ export interface File {
   countReplicas?: number;
   reported?: boolean;
   isPinned?: boolean;
+  countIpfsFail?: number;
   isAdded?: boolean;
   isCommitted?: boolean;
 }
@@ -116,7 +118,7 @@ export default class Store {
   }
 
   public async checkDeleteCid(cid: string) {
-    let file = this.getFile(cid);
+    const file = this.getFile(cid);
     if (!file) this.files.set(cid, this.defaultFile());
     try {
       const maybeStoreFile = await this.chain.getStoreFie(cid);
@@ -140,6 +142,13 @@ export default class Store {
       }
     } catch (err) {
       logger.warn(`Fail to check delete cid ${cid}`);
+    }
+  }
+
+  public async markFileIpfsFail(cid: string) {
+    const file = this.getFile(cid);
+    if (file) {
+      file.countIpfsFail = file.countIpfsFail + 1; 
     }
   }
 
@@ -208,7 +217,8 @@ export default class Store {
   }
 
   private isFileCanReportAdd(file: File) {
-    return  !file.reported && file.isAdded && !file.isCommitted && file.countReplicas < this.chain.constants.maxFileReplicas
+    return  !file.reported && file.isAdded && !file.isCommitted && 
+      file.countReplicas < this.chain.constants.maxFileReplicas && file.countIpfsFail < config.ipfs.maxRetries;
   }
 
   private isFileCanReportSettle(file: File) {
@@ -234,6 +244,7 @@ export default class Store {
         expireAt: Number.MAX_SAFE_INTEGER,
         fileSize: 0,
         countReplicas: 0,
+        countIpfsFail: 0,
       }
   }
 }

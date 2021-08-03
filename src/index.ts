@@ -171,6 +171,7 @@ class Engine {
       this.teaQueue.enqueue({ type: "addFile", cid }, 3);
       logger.info(`✨ AddIpfsFile ${cid} success`);
     } catch (e) {
+      this.store.markFileIpfsFail(cid);
       logger.error(`💥 Fail to add ipfs file ${cid}, ${e.toString()}`);
     }
   }
