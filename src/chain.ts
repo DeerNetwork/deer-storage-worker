@@ -28,6 +28,7 @@ export interface FileState {
 
 export interface ReportState {
   isReported: boolean;
+  checkedAt: number;
   rid: number;
   reportedAt: number;
   nextRoundAt: number;
@@ -56,6 +57,7 @@ export default class Chain {
   private api: ApiPromise;
   private unsubscribeEvents: () => void;
   private unsubscribeBlocks: () => void;
+  private currentBn: number = 0;
 
   public async init() {
     await this.stop();
@@ -108,6 +110,7 @@ export default class Chain {
     }
     this.reportState = {
       isReported: node.reported_at.gt(nextRoundAt.sub(new BN(this.constants.roundDuration))),
+      checkedAt: this.currentBn,
       rid: node.rid.toNumber(),
       reportedAt,
       nextRoundAt: nextRoundAt.toNumber(),
@@ -115,13 +118,19 @@ export default class Chain {
     return this.reportState;
   }
 
-  public detectPeroid(now: number) {
+  public async detectPeroid(now: number) {
+    if (this.reportState.checkedAt - this.currentBn > this.constants.roundDuration / 2) {
+      await this.getReportState();
+    }
     if (!this.reportState.isReported) {
       if (this.reportState.nextRoundAt - now < ENFORCE_R * this.constants.roundDuration) {
         return Peroid.Enforce;
       }
-      const reportTime = (now - this.reportState.reportedAt) % this.constants.roundDuration;
-      const r = reportTime / this.constants.roundDuration;
+      const passTime = now - this.reportState.reportedAt;
+      if (passTime > this.constants.roundDuration) {
+        return Peroid.Enforce;
+      }
+      const r = passTime / this.constants.roundDuration;
       if (r < ENFORCE_R) {
         return Peroid.Enforce;
       }
@@ -237,7 +246,7 @@ export default class Chain {
 
   private async listenBlocks() {
     this.unsubscribeBlocks = await this.api.rpc.chain.subscribeFinalizedHeads(header => {
-      logger.info(`New block ${header.number.toString()} ${header.hash.toHex()}`);
+      this.currentBn = header.number.toNumber();
       emitter.emit("header", header);
     });
   }
@@ -245,7 +254,6 @@ export default class Chain {
   private async listenEvents() {
     this.unsubscribeEvents = await this.api.query.system.events((events) => {
       for (const ev of events) {
-        logger.debug(`New event ${JSON.stringify(ev.toHuman())}`);
         const { event: { data, method } } = ev;
         if (method === "StoreFileSubmitted") {
           const cid = hex2str(data[0].toString());

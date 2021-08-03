@@ -40,7 +40,7 @@ class Engine {
 
     emitter.on("header", async header => {
       try {
-        const period = this.chain.detectPeroid(header.number.toNumber());
+        const period = await this.chain.detectPeroid(header.number.toNumber());
         this.period = period;
         if (this.period === Peroid.Enforce) {
           if (!this.isReporting) {
@@ -99,33 +99,42 @@ class Engine {
       fatal(`💥 On chain machine is ${system.machine_id}, current machind is ${machine}`);
       return false;
     }
+    if (this.chain.reportState.rid && system.cursor_committed !== this.chain.reportState.rid) {
+      await this.teaQueue.enqueue({ type: "commit" }, 4);
+    }
     this.machine = machine;
     return true;
   }
 
   private async runIpfsQueue() {
-    while (this.ipfsQueue.isEmpty()) {
-      await sleep(2000);
-    }
-    const { element: task } = this.ipfsQueue.dequeue();
-    if (task.type === "addFile") {
-      await this.addIpfsFile(task.cid);
+    while (true) {
+      if (this.ipfsQueue.isEmpty()) {
+        await sleep(2000);
+        continue;
+      }
+      const { element: task } = this.ipfsQueue.dequeue();
+      if (task.type === "addFile") {
+        await this.addIpfsFile(task.cid);
+      }
     }
   }
 
   private async runTeaQueue() {
-    while (this.teaQueue.isEmpty()) {
-      await sleep(2000);
-    }
-    const { element: task } = this.teaQueue.dequeue();
-    if (task.type === "addFile") {
-      await this.addFile(task.cid);
-    } else if (task.type === "delFile") {
-      await this.delFile(task.cid);
-    } else if (task.type === "report") {
-      await this.report();
-    } else if (task.type === "commit") {
-      await this.commit();
+    while (true) {
+      if (this.teaQueue.isEmpty()) {
+        await sleep(2000);
+        continue;
+      }
+      const { element: task } = this.teaQueue.dequeue();
+      if (task.type === "addFile") {
+        await this.addFile(task.cid);
+      } else if (task.type === "delFile") {
+        await this.delFile(task.cid);
+      } else if (task.type === "report") {
+        await this.report();
+      } else if (task.type === "commit") {
+        await this.commit();
+      }
     }
   }
 
