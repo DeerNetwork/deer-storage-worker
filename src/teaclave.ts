@@ -81,15 +81,14 @@ export default class Teaclave {
     try {
       const res = await rpc();
       logger.debug(
-        `⚡️ Teaclave call ${name}, response: ${JSON.stringify(res.data)}`
+        `⚡️ teaclave.${name}, response: ${JSON.stringify(res.data)}`
       );
       if (res.status == 200) {
         return res.data;
       }
-      logger.error(`💥 Teaclave call ${name}: ${res.data}`);
+      throw new Error(`teaclave.${name}: ${res.data}`);
     } catch (e) {
-      logger.error(`💥 Teaclave call ${name}: ${e.message}`);
-      throw e;
+      throw new Error(`teaclave.${name}: ${e.message}`);
     }
   }
 

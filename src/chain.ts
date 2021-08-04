@@ -128,7 +128,7 @@ export default class Chain {
       this.getReportState();
     }
     if (!this.reportState.reported) {
-      return this.now >  this.reportState.nextReportAt
+      return this.now >= this.reportState.nextReportAt;
     }
     return false;
   }

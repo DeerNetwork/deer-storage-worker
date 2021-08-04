@@ -8,10 +8,14 @@ export default function makeIpfs() {
   const ipfs = create(config.ipfs.url as any);
   return {
     async pinAdd(cid: string): Promise<boolean> {
-      const id = new CID(cid);
-      const pin = await ipfs.pin.add(cid, { timeout: config.ipfs.pinTimeout });
-      logger.debug(`ipfs.addPin ${cid}`);
-      return id.equals(pin);
+      try {
+        const id = new CID(cid);
+        const pin = await ipfs.pin.add(cid, { timeout: config.ipfs.pinTimeout });
+        logger.debug(`ipfs.pinAdd ${cid}`);
+        return id.equals(pin);
+      } catch (err) {
+        throw new Error(`ipfs.pinAdd ${cid}, ${err.message}`);
+      }
     },
     async pinRemove(cid: string): Promise<boolean> {
       const id = new CID(cid);
@@ -23,15 +27,19 @@ export default function makeIpfs() {
         if (/not pinned/.test(err.message)) {
           return true;
         }
-        throw err;
+        throw new Error(`ipfs.pinRemove ${cid}, ${err.message}`);
       }
     },
     async pinList(): Promise<string[]> {
-      const list = [];
-      for await (const { cid } of ipfs.pin.ls({ type: "recursive" })) {
-        list.push(cid.toString());
+      try {
+        const list = [];
+        for await (const { cid } of ipfs.pin.ls({ type: "recursive" })) {
+          list.push(cid.toString());
+        }
+        return list;
+      } catch (err) {
+        throw new Error(`ipfs.pinList ${err.message}`);
       }
-      return list;
     },
     async pinCheck(cid: string): Promise<boolean> {
       try {
@@ -44,14 +52,18 @@ export default function makeIpfs() {
         if (/not pinned/.test(err.message)) {
           return false;
         }
-        throw err;
+        throw new Error(`ipfs.pinCheck ${err.message}`);
       }
       return false;
     },
     async size(cid: string): Promise<number> {
-      const id = new CID(cid);
-      const info = await ipfs.object.stat(id);
-      return info.CumulativeSize;
+      try {
+        const id = new CID(cid);
+        const info = await ipfs.object.stat(id);
+        return info.CumulativeSize;
+      } catch (err) {
+        throw new Error(`ipfs.size ${cid}, ${err.message}`);
+      }
     },
   };
 }
