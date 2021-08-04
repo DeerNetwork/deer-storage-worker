@@ -34,7 +34,7 @@ class Engine {
     let isTeaclaveOk = false;
     do {
       isTeaclaveOk = await this.initTeaclave();
-      if (!isTeaclaveOk) await sleep(10000);
+      if (!isTeaclaveOk) await sleep(18000);
     } while(!isTeaclaveOk);
 
     this.chain.listen();
@@ -99,15 +99,7 @@ class Engine {
     }
     const stash = maybeStash.unwrap();
     if (stash.machine_id.isNone) {
-      const attest = await this.teaclave.attest();
-      if (!attest) return false;
-      const res = await this.chain.register(attest);
-      if (res.status === "failed") {
-        fatal("Fail to register node");
-        return false;
-      }
-      logger.info("✨ Register node successed");
-      return false;
+      return this.registerTeaclave();
     }
     const system = await this.teaclave.system();
     const machine = stash.machine_id.unwrap().toString();
@@ -115,11 +107,26 @@ class Engine {
       fatal(`💥 On chain machine is ${system.machine_id}, current machind is ${machine}`);
       return false;
     }
+    if (!system.enclave) {
+      return this.registerTeaclave();
+    }
     if (this.chain.reportState.rid && system.cursor_committed !== this.chain.reportState.rid) {
       await this.teaQueue.enqueue({ type: "commit" }, 4);
     }
     this.machine = machine;
     return true;
+  }
+
+  private async registerTeaclave() {
+    const attest = await this.teaclave.attest();
+    if (!attest) return false;
+    const res = await this.chain.register(attest);
+    if (res.status === "failed") {
+      fatal("Fail to register node");
+      return false;
+    }
+    logger.info("✨ Register node successed");
+    return false;
   }
 
   private async runIpfsQueue() {
