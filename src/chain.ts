@@ -116,7 +116,7 @@ export default class Chain {
     this.reportState = {
       reportedAt,
       nextReportAt,
-      reported: reportedAt >= currentRoundAt,
+      reported: reportedAt > 0 && reportedAt >= currentRoundAt,
       rid: node.rid.toNumber(),
       nextRoundAt: nextRoundAt,
     };
