@@ -110,6 +110,13 @@ class Engine {
     if (!system.enclave) {
       return this.registerTeaclave();
     }
+    const maybeRegister = await this.chain.getRegister(machine);
+    if (maybeRegister.isNone) {
+      return this.registerTeaclave();
+    }
+    if (maybeRegister.unwrap().enclave.toHex() !== "0x" + system.enclave) {
+      return this.registerTeaclave();
+    }
     if (this.chain.reportState.rid && system.cursor_committed !== this.chain.reportState.rid) {
       await this.teaQueue.enqueue({ type: "commit" }, 4);
     }
