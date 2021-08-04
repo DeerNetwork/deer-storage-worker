@@ -170,17 +170,17 @@ class Engine {
 
   private async addTeaFile(cid) {
     try {
-      logger.debug(`Execute addFile ${cid}`);
+      logger.debug(`Execute addTeaFile ${cid}`);
       const file = this.store.getFile(cid);
       if (!file) {
-        logger.warn(`File ${cid} must exist when addFile`);
+        logger.warn(`File ${cid} must exist when addTeaFile`);
         return;
       }
       if (!file.isAdded) {
         const res = await this.teaclave.addFile(cid);
         if (res) this.store.addTeaFile({ cid, fileSize: res.size, committed: false });
       }
-      logger.info(`✨ AddFile ${cid} success`);
+      logger.info(`✨ addTeaFile ${cid} success`);
     } catch (e) {
       logger.error(`💥 Fail to add file ${cid}, ${e.toString()}`);
     }
@@ -229,12 +229,12 @@ class Engine {
   private async afterCommit() {
     try {
       await this.store.checkReportCids(this.reportCids);
-      const pendingFiles = await this.store.getPendingFiles();
-      logger.debug(`Get pendding files ${JSON.stringify(pendingFiles)}`);
-      for (const cid of pendingFiles.ipfsFiles) {
+      const myFiles = await this.store.getWorthFiles();
+      logger.debug(`Get pendding files ${JSON.stringify(myFiles)}`);
+      for (const cid of myFiles.ipfsFiles) {
         this.ipfsQueue.enqueue({ type: "addFile", cid }, 2);
       }
-      for (const cid of pendingFiles.teaFiles) {
+      for (const cid of myFiles.teaFiles) {
         this.teaQueue.enqueue({ type: "addFile", cid }, 3);
       }
     } catch {}

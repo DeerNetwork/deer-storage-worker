@@ -38,7 +38,7 @@ export default class Store {
     for (const {cid, fileOrder} of fileOrders) {
       this.addFileOrder(cid, fileOrder);
     }
-    const cids = await this.ipfs.pinLs();
+    const cids = await this.ipfs.pinList();
     for (const cid of cids) {
       this.addPin(cid);
     }
@@ -60,7 +60,7 @@ export default class Store {
     if (!file) return;
     if (!this.isFileDirty(file)) return;
     if (file.isPinned) {
-      await this.ipfs.pinRm(cid);
+      await this.ipfs.pinRemove(cid);
     }
     if (file.isAdded) {
       await this.teaclave.delFile(cid);
@@ -101,15 +101,15 @@ export default class Store {
     return { addFiles, settleFiles };
   }
 
-  public async getPendingFiles() {
+  public async getWorthFiles() {
     const ipfsFiles = [];
     const teaFiles = [];
     for (const [cid, file] of this.files.entries()) {
-      if (this.isFilePendingIpfs(file)) {
+      if (this.isFileWorthIpfs(file)) {
         ipfsFiles.push(cid);
         continue;
       }
-      if (this.isFilePendingTea(file)) {
+      if (this.isFileWorthTea(file)) {
         teaFiles.push(cid);
         continue;
       }
@@ -133,7 +133,9 @@ export default class Store {
         }
       } else {
         file.reserved = BigInt(0);
+        file.expireAt = 0;
       }
+      file.isPinned = await this.ipfs.pinCheck(cid);
       const teaFile = await this.teaclave.checkFile(cid);
       if (teaFile) {
         this.addTeaFile(teaFile);
@@ -217,24 +219,28 @@ export default class Store {
   }
 
   private isFileCanReportAdd(file: File) {
-    return  !file.reported && file.isAdded && !file.isCommitted && 
-      file.countReplicas < this.chain.constants.maxFileReplicas && file.countIpfsFail < config.ipfs.maxRetries;
+    return this.isFileWorth(file) && file.isPinned && file.isAdded && !file.isCommitted
   }
 
   private isFileCanReportSettle(file: File) {
-    return file.isCommitted && file.expireAt < this.chain.now;
+    return file.isCommitted && file.expireAt <= this.chain.now;
   }
 
-  private isFilePendingIpfs(file: File) {
-    return !file.reported && !file.isPinned && file.countReplicas < this.chain.constants.maxFileReplicas
+  private isFileWorthIpfs(file: File) {
+    return  this.isFileWorth(file) && !file.isPinned  && file.countIpfsFail < config.ipfs.maxRetries;
   }
 
-  private isFilePendingTea(file: File) {
-    return !file.reported && file.isPinned && !file.isAdded && file.countReplicas < this.chain.constants.maxFileReplicas
+  private isFileWorthTea(file: File) {
+    return this.isFileWorth(file) && file.isPinned && !file.isAdded;
+  }
+
+  private isFileWorth(file: File) {
+    return !file.reported && (file.countReplicas || 0) < this.chain.constants.maxFileReplicas;
   }
 
   private isFileDirty(file: File) {
-    return file.reserved === BigInt(0) || (!file.reported && file.countReplicas >= this.chain.constants.maxFileReplicas)
+    return (file.reserved === BigInt(0) && file.expireAt < this.chain.now) ||
+      (!file.reported && file.countReplicas >= this.chain.constants.maxFileReplicas);
   }
 
   private defaultFile(): File {

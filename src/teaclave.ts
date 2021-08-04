@@ -80,7 +80,7 @@ export default class Teaclave {
   async wrapRpc<T>(name: string, rpc: () => Promise<AxiosResponse<T>>): Promise<T> {
     try {
       const res = await rpc();
-      logger.info(
+      logger.debug(
         `⚡️ Teaclave call ${name}, response: ${JSON.stringify(res.data)}`
       );
       if (res.status == 200) {

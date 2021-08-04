@@ -87,11 +87,11 @@ export default class Chain {
     let reportedAt = 0;
     let nextReportAt = this.reportState?.nextReportAt || 0;
     let randNextReportAt = () => {
-      if (nextRoundAt - this.now < 3) {
-        return nextRoundAt + _.random(0, 30);
-      } else {
-        return _.random(this.now, nextRoundAt);
+      let ret = _.random(this.now + 10, this.now + 30);
+      if (nextRoundAt - ret < 5) {
+        ret -= _.random(5, 10);
       }
+      return ret;
     }
     if (maybeNode.isNone) {
       nextReportAt = randNextReportAt();
@@ -107,7 +107,9 @@ export default class Chain {
           nextReportAt -= _.random(5, 10);
         }
       } else {
-        nextReportAt = randNextReportAt();
+        if (nextReportAt < currentRoundAt) {
+          nextReportAt = randNextReportAt();
+        } 
       }
     }
     this.reportState = {

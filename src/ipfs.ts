@@ -13,7 +13,7 @@ export default function makeIpfs() {
       logger.debug(`ipfs.addPin ${cid}`);
       return id.equals(pin);
     },
-    async pinRm(cid: string): Promise<boolean> {
+    async pinRemove(cid: string): Promise<boolean> {
       const id = new CID(cid);
       try {
         const pin = await ipfs.pin.rm(cid);
@@ -26,12 +26,27 @@ export default function makeIpfs() {
         throw err;
       }
     },
-    async pinLs(): Promise<string[]> {
+    async pinList(): Promise<string[]> {
       const list = [];
       for await (const { cid } of ipfs.pin.ls({ type: "recursive" })) {
         list.push(cid.toString());
       }
       return list;
+    },
+    async pinCheck(cid: string): Promise<boolean> {
+      try {
+        for await (const { cid: cidObj } of ipfs.pin.ls({ type: "recursive", paths: new CID(cid), timeout: 10000 })) {
+          if (cidObj.toString() === cid) {
+            return true;
+          }
+        }
+      } catch (err) {
+        if (/not pinned/.test(err.message)) {
+          return false;
+        }
+        throw err;
+      }
+      return false;
     },
     async size(cid: string): Promise<number> {
       const id = new CID(cid);
