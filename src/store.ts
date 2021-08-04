@@ -170,44 +170,39 @@ export default class Store {
   }
 
   public addStoreFile(cid: string, storeFile: StoreFile) {
-    if (this.files.has(cid)) {
-      const item = this.files.get(cid);
-      item.reserved = storeFile.reserved.toBigInt();
-      item.updateAt = Date.now();
-    } else {
-      this.files.set(cid, {
-        ...this.defaultFile(),
-        reserved: storeFile.reserved.toBigInt(),
-      });
-    }
+    let file = this.files.get(cid) || this.defaultFile();
+    file.reserved = storeFile.reserved.toBigInt();
+    file.updateAt = Date.now();
+    if (!file.fileSize) file.fileSize = storeFile.file_size.toNumber();
+    this.files.set(cid, file);
   }
 
   public addFileOrder(cid: string, fileOrder: FileOrder) {
     if (this.files.has(cid)) {
-      const item = this.files.get(cid);
-      item.fileSize = fileOrder.file_size.toNumber();
-      item.expireAt = fileOrder.expire_at.toNumber();
-      item.countReplicas = fileOrder.replicas.length;
-      item.reported = !!fileOrder.replicas.find(v => v.eq(this.chain.address));
-      item.updateAt = Date.now();
+      const file = this.files.get(cid);
+      file.fileSize = fileOrder.file_size.toNumber();
+      file.expireAt = fileOrder.expire_at.toNumber();
+      file.countReplicas = fileOrder.replicas.length;
+      file.reported = !!fileOrder.replicas.find(v => v.eq(this.chain.address));
+      file.updateAt = Date.now();
     }
   }
 
   public addPin(cid: string) {
     if (this.files.has(cid)) {
-      const item = this.files.get(cid);
-      item.isPinned = true;
-      item.updateAt = Date.now();
+      const file = this.files.get(cid);
+      file.isPinned = true;
+      file.updateAt = Date.now();
     } 
   }
 
   public addTeaFile(teaFile: TeaFile) {
     const { cid, committed } = teaFile;
     if (this.files.has(cid)) {
-      const item = this.files.get(cid);
-      item.isAdded = true;
-      item.isCommitted = committed;
-      item.updateAt = Date.now();
+      const file = this.files.get(cid);
+      file.isAdded = true;
+      file.isCommitted = committed;
+      file.updateAt = Date.now();
     } else {
       this.files.set(cid, {
         ...this.defaultFile(),

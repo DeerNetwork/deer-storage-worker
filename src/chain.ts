@@ -133,6 +133,10 @@ export default class Chain {
     return false;
   }
 
+  public getReportInterval() {
+    return this.reportState.nextReportAt - this.now;
+  }
+
   public async getStash() {
     return await this.api.query.fileStorage.stashs(this.address);
   }

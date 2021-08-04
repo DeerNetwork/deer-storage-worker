@@ -3,8 +3,9 @@ import makeIpfs, { Ipfs } from "./ipfs";
 import Teaclave from "./teaclave";
 import Store from "./store";
 import emitter from "./emitter";
+import config from "./config";
 import { fatal, logger, sleep } from "./utils";
-import { MaxPriorityQueue } from "@datastructures-js/priority-queue";
+import { MaxPriorityQueue, MinPriorityQueue } from "@datastructures-js/priority-queue";
 
 interface Task {
   type: "addFile" | "delFile" | "report" | "commit",
@@ -17,11 +18,12 @@ class Engine {
   private teaclave: Teaclave;
   private store: Store;
   private machine: string;
-  private ipfsQueue: MaxPriorityQueue<Task>;
+  private ipfsQueue: MinPriorityQueue<string>;
   private teaQueue: MaxPriorityQueue<Task>;
   private isReporting = false;
   private reportCids: string[];
   private checkPoint = 0;
+  private ipfsConcurrency = config.ipfs.concurrency;
 
   public async init() {
     this.chain = new Chain();
@@ -79,7 +81,7 @@ class Engine {
         return;
       } 
       logger.debug(`IpfsQueue addFile ${cid}`);
-      this.ipfsQueue.enqueue({ type: "addFile", cid }, 3);
+      this.ipfsQueue.enqueue(cid, this.chain.getReportInterval());
     });
     emitter.on("file:del", async cid => {
       logger.debug(`TeaQueue delFile ${cid}`);
@@ -138,14 +140,13 @@ class Engine {
 
   private async runIpfsQueue() {
     while (true) {
-      if (this.ipfsQueue.isEmpty()) {
+      if (this.ipfsQueue.isEmpty() || this.ipfsConcurrency <= 0) {
         await sleep(2000);
         continue;
       }
-      const { element: task } = this.ipfsQueue.dequeue();
-      if (task.type === "addFile") {
-        await this.addIpfsFile(task.cid);
-      }
+      const { element: cid } = this.ipfsQueue.dequeue();
+      this.ipfsConcurrency += 1;
+      await this.addIpfsFile(cid);
     }
   }
 
@@ -176,8 +177,9 @@ class Engine {
         logger.warn(`File ${cid} must exist when addIpfsFile`);
         return;
       }
+      // TODO check disk space
       if (!file.isPinned) {
-        await this.ipfs.pinAdd(cid);
+        await this.ipfs.pinAdd(cid, file.fileSize);
         this.store.addPin(cid);
       }
       this.teaQueue.enqueue({ type: "addFile", cid }, 3);
@@ -186,6 +188,7 @@ class Engine {
       this.store.markFileIpfsFail(cid);
       logger.error(`💥 Fail to add ipfs file ${cid}, ${e.toString()}`);
     }
+    this.ipfsConcurrency -= 1;
   }
 
   private async addTeaFile(cid) {
@@ -268,7 +271,7 @@ class Engine {
       const myFiles = await this.store.getPendingFiles();
       logger.debug(`Get pendding files ${JSON.stringify(myFiles)}`);
       for (const cid of myFiles.ipfsFiles) {
-        this.ipfsQueue.enqueue({ type: "addFile", cid }, 2);
+        this.ipfsQueue.enqueue(cid, this.chain.constants.roundDuration);
       }
       for (const cid of myFiles.teaFiles) {
         this.teaQueue.enqueue({ type: "addFile", cid }, 3);

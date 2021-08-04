@@ -7,10 +7,11 @@ export type Ipfs = ReturnType<typeof makeIpfs>;
 export default function makeIpfs() {
   const ipfs = create(config.ipfs.url as any);
   return {
-    async pinAdd(cid: string): Promise<boolean> {
+    async pinAdd(cid: string, fileSize: number): Promise<boolean> {
       try {
         const id = new CID(cid);
-        const pin = await ipfs.pin.add(cid, { timeout: config.ipfs.pinTimeout });
+        const timeout = config.ipfs.pinTimeout + (fileSize / 1024 / 200) * 1000;
+        const pin = await ipfs.pin.add(cid, { timeout });
         logger.debug(`ipfs.pinAdd ${cid}`);
         return id.equals(pin);
       } catch (err) {
