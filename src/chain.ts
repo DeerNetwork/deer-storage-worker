@@ -107,6 +107,7 @@ export default class Chain {
           nextReportAt -= _.random(5, 10);
         }
       } else {
+        nextReportAt = reportedAt + roundDuration;
         if (nextReportAt < currentRoundAt) {
           nextReportAt = randNextReportAt();
         } 

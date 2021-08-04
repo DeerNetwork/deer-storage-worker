@@ -101,15 +101,15 @@ export default class Store {
     return { addFiles, settleFiles };
   }
 
-  public async getWorthFiles() {
+  public async getPendingFiles() {
     const ipfsFiles = [];
     const teaFiles = [];
     for (const [cid, file] of this.files.entries()) {
-      if (this.isFileWorthIpfs(file)) {
+      if (this.isFilePendingIpfs(file)) {
         ipfsFiles.push(cid);
         continue;
       }
-      if (this.isFileWorthTea(file)) {
+      if (this.isFilePendingTea(file)) {
         teaFiles.push(cid);
         continue;
       }
@@ -226,11 +226,11 @@ export default class Store {
     return file.isCommitted && file.expireAt <= this.chain.now;
   }
 
-  private isFileWorthIpfs(file: File) {
+  private isFilePendingIpfs(file: File) {
     return  this.isFileWorth(file) && !file.isPinned  && file.countIpfsFail < config.ipfs.maxRetries;
   }
 
-  private isFileWorthTea(file: File) {
+  private isFilePendingTea(file: File) {
     return this.isFileWorth(file) && file.isPinned && !file.isAdded;
   }
 

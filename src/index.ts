@@ -21,6 +21,7 @@ class Engine {
   private teaQueue: MaxPriorityQueue<Task>;
   private isReporting = false;
   private reportCids: string[];
+  private checkPoint = 0;
 
   public async init() {
     this.chain = new Chain();
@@ -37,21 +38,26 @@ class Engine {
     } while(!isTeaclaveOk);
 
     this.chain.listen();
-    
+    this.checkPoint = this.chain.now;
     this.store.init(this.chain, this.ipfs, this.teaclave);
     this.runIpfsQueue();
     this.runTeaQueue();
+    setInterval(() => {
+      this.checkInterval();
+    }, 60000);
 
     emitter.on("header", async header => {
       try {
         const blockNum = header.number.toNumber();
         const sholdReport = await this.chain.shouldReport(blockNum);
-        const { nextReportAt, reportedAt } = this.chain.reportState;
-        const { isReporting } = this;
-        logger.debug(`blockNum=${blockNum}, ${JSON.stringify({ sholdReport, reportedAt, nextReportAt, isReporting })}`);
+        const { nextReportAt, reportedAt, nextRoundAt } = this.chain.reportState;
+        logger.debug(`blockNum=${blockNum}, ${JSON.stringify({ reportedAt, nextReportAt, nextRoundAt })}`);
         if (sholdReport && !this.isReporting) {
             this.teaQueue.enqueue({ type: "report" }, 4);
             this.isReporting = true;
+        }
+        if (blockNum % 60 === 0) {
+          this.checkPending();
         }
       } catch (e) {
         logger.error(`💥 Caught on event header: ${e.toString()}`);
@@ -229,7 +235,21 @@ class Engine {
   private async afterCommit() {
     try {
       await this.store.checkReportCids(this.reportCids);
-      const myFiles = await this.store.getWorthFiles();
+    } catch {}
+  }
+  
+  private async checkInterval() {
+    try {
+      if (this.chain.now === this.checkPoint) {
+        await this.chain.init();
+      }
+    } catch {}
+    this.checkPoint = this.chain.now;
+  }
+
+  private async checkPending() {
+    try {
+      const myFiles = await this.store.getPendingFiles();
       logger.debug(`Get pendding files ${JSON.stringify(myFiles)}`);
       for (const cid of myFiles.ipfsFiles) {
         this.ipfsQueue.enqueue({ type: "addFile", cid }, 2);
@@ -239,7 +259,6 @@ class Engine {
       }
     } catch {}
   }
-
 }
 
 const engine = new Engine();
