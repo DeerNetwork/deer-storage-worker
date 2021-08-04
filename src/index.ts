@@ -220,6 +220,8 @@ class Engine {
   private async report() {
     try {
       logger.debug("Worker trying to report works");
+      const { reported } = await this.chain.getReportState();
+      if (reported) return;
       const { addFiles, settleFiles } =  await this.store.getReportFiles();
       const reportData = await this.teaclave.preparePeport(addFiles);
       const res = await this.chain.reportWork(this.machine, reportData, settleFiles);
