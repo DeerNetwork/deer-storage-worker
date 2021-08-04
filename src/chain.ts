@@ -50,7 +50,6 @@ export default class Chain {
       provider: new WsProvider(chainConfig.endpoint),
       typesBundle: typesBundleForPolkadot,
     });
-
     await this.waitReady();
     await this.initAccount();
     Promise.all([
@@ -77,37 +76,46 @@ export default class Chain {
   }
 
   public async getReportState(): Promise<ReportState> {
-    const [maybeNode, nextRoundAt] = await Promise.all([
+    const [maybeNode, nextRoundAtN] = await Promise.all([
       this.api.query.fileStorage.nodes(this.address),
       this.api.query.fileStorage.nextRoundAt(),
     ]);
-    const currentRoundAt = nextRoundAt.sub(new BN(this.constants.roundDuration));
+    const { roundDuration } = this.constants;
+    const currentRoundAt = nextRoundAtN.sub(new BN(roundDuration)).toNumber();
+    const nextRoundAt = nextRoundAtN.toNumber();
     const node = maybeNode.unwrapOrDefault();
-    let reportedAt: number; 
-    let nextReportAt: number;
-    if (maybeNode.isNone) {
-      if (this.now === 0) {
-        const header = await this.api.rpc.chain.getHeader();
-        this.now = header.number.toNumber();
-      }
-      if (nextRoundAt.toNumber() - this.now < 3) {
-        nextReportAt = nextRoundAt.toNumber() + _.random(0, 30);
+    let reportedAt = 0;
+    let nextReportAt = this.reportState?.nextReportAt || 0;
+    let randNextReportAt = () => {
+      if (nextRoundAt - this.now < 3) {
+        return nextRoundAt + _.random(0, 30);
       } else {
-        nextReportAt = _.random(this.now, nextRoundAt.toNumber());
+        return _.random(this.now, nextRoundAt);
       }
+    }
+    if (maybeNode.isNone) {
+      nextReportAt = randNextReportAt();
     } else {
       reportedAt = node.reported_at.toNumber();
-      nextReportAt = reportedAt + this.constants.roundDuration;
-      if (nextRoundAt.toNumber() + this.constants.roundDuration - nextReportAt < 3) {
-        nextReportAt -= _.random(0, 10);
+      if (reportedAt >= currentRoundAt) {
+        if (nextReportAt >= currentRoundAt && nextReportAt < nextRoundAt) {
+          nextReportAt = nextReportAt + roundDuration;
+        } else if (nextReportAt < currentRoundAt) {
+          nextReportAt = reportedAt + roundDuration;
+        }
+        if (nextRoundAt + roundDuration - nextReportAt < 5) {
+          nextReportAt -= _.random(5, 10);
+        }
+      } else {
+        nextReportAt = randNextReportAt();
       }
     }
     this.reportState = {
-      nextReportAt,
-      reported: node.reported_at.gt(currentRoundAt),
-      rid: node.rid.toNumber(),
       reportedAt,
-      nextRoundAt: nextRoundAt.toNumber(),
+      nextReportAt,
+      reported: reportedAt >= currentRoundAt,
+      rid: node.rid.toNumber(),
+      nextRoundAt: nextRoundAt,
     };
     return this.reportState;
   }
@@ -286,17 +294,18 @@ export default class Chain {
       await this.init(); 
     }
     while (await this.isSyncing()) {
+      const header = await this.header()
       logger.info(
-        `⛓  Chain is synchronizing, current block number ${(
-          await this.header()
-        ).number.toNumber()}`
+        `⛓  Chain is synchronizing, current block number ${header.number.toNumber()}`
       );
       await sleep(6000);
     }
   }
 
   private async header() {
-    return this.api.rpc.chain.getHeader();
+    const header = await this.api.rpc.chain.getHeader();
+    this.now = header.number.toNumber();
+    return header;
   }
 
   private async waitApiReady() {
