@@ -60,7 +60,7 @@ export default function makeIpfs() {
     async size(cid: string): Promise<number> {
       try {
         const id = new CID(cid);
-        const info = await ipfs.object.stat(id);
+        const info = await ipfs.object.stat(id, { timeout: config.ipfs.sizeTimeout });
         return info.CumulativeSize;
       } catch (err) {
         throw new Error(`ipfs.size ${cid}, ${err.message}`);

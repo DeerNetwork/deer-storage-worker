@@ -179,6 +179,10 @@ class Engine {
       }
       // TODO check disk space
       if (!file.isPinned) {
+        const ipfsFileSize = await this.ipfs.size(cid);
+        if (ipfsFileSize > this.chain.constants.maxFileSize) {
+          throw new Error("fileSize too large");
+        }
         await this.ipfs.pinAdd(cid, file.fileSize);
         this.store.addPin(cid);
       }

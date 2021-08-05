@@ -13,6 +13,7 @@ const config =  {
     maxRetries: 3,
     concurrency: 10,
     pinTimeout: 60000,
+    sizeTimeout: 60000,
   },
   teaclave: {
     baseURL: "http://127.0.0.1:2121",
