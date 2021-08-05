@@ -35,7 +35,7 @@ class Engine {
     await this.chain.init();
     let isTeaclaveOk = false;
     do {
-      isTeaclaveOk = await this.initTeaclave();
+        isTeaclaveOk = await this.initTeaclave();
       if (!isTeaclaveOk) await sleep(18000);
     } while(!isTeaclaveOk);
 
@@ -94,36 +94,41 @@ class Engine {
   }
 
   private async initTeaclave() {
-    const maybeStash = await this.chain.getStash();
-    if (maybeStash.isNone) {
-      logger.warn("💥 Account is not stashed");
+    try {
+      const maybeStash = await this.chain.getStash();
+      if (maybeStash.isNone) {
+        logger.warn("💥 Account is not stashed");
+        return false;
+      }
+      const stash = maybeStash.unwrap();
+      if (stash.machine_id.isNone) {
+        return this.registerTeaclave();
+      }
+      const system = await this.teaclave.system();
+      const machine = stash.machine_id.unwrap().toString();
+      if (machine !== "0x" + system.machine_id) {
+        fatal(`💥 On chain machine is ${system.machine_id}, current machind is ${machine}`);
+        return false;
+      }
+      if (!system.enclave) {
+        return this.registerTeaclave();
+      }
+      const maybeRegister = await this.chain.getRegister(machine);
+      if (maybeRegister.isNone) {
+        return this.registerTeaclave();
+      }
+      if (maybeRegister.unwrap().enclave.toHex() !== "0x" + system.enclave) {
+        return this.registerTeaclave();
+      }
+      if (this.chain.reportState.rid && system.cursor_committed !== this.chain.reportState.rid) {
+        await this.teaQueue.enqueue({ type: "commit" }, 4);
+      }
+      this.machine = machine;
+      return true;
+    } catch (err) {
+      logger.error(`💥 Fail to init teaclave ${err.toString()}`);
       return false;
     }
-    const stash = maybeStash.unwrap();
-    if (stash.machine_id.isNone) {
-      return this.registerTeaclave();
-    }
-    const system = await this.teaclave.system();
-    const machine = stash.machine_id.unwrap().toString();
-    if (machine !== "0x" + system.machine_id) {
-      fatal(`💥 On chain machine is ${system.machine_id}, current machind is ${machine}`);
-      return false;
-    }
-    if (!system.enclave) {
-      return this.registerTeaclave();
-    }
-    const maybeRegister = await this.chain.getRegister(machine);
-    if (maybeRegister.isNone) {
-      return this.registerTeaclave();
-    }
-    if (maybeRegister.unwrap().enclave.toHex() !== "0x" + system.enclave) {
-      return this.registerTeaclave();
-    }
-    if (this.chain.reportState.rid && system.cursor_committed !== this.chain.reportState.rid) {
-      await this.teaQueue.enqueue({ type: "commit" }, 4);
-    }
-    this.machine = machine;
-    return true;
   }
 
   private async registerTeaclave() {
@@ -285,7 +290,7 @@ class Engine {
 }
 
 const engine = new Engine();
-engine.init().catch(e => {
-  logger.error(`💥 Caught on engine.init: ${e.toString()}`);
+engine.init().catch(err => {
+  logger.error(`💥 Caught on engine.init: ${err.toString()}`);
   process.exit(1);
 });
