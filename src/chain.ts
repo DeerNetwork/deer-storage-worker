@@ -91,7 +91,7 @@ export default class Chain {
       nextReportAt = this.now + _.random(10, 20);
     } else {
       if (nextReportAt <= currentRoundAt && reportedAt < currentRoundAt) {
-        nextReportAt = Math.min(this.now + _.random(5, 10), nextRoundAt - 5);
+        nextReportAt = Math.min(this.now + _.random(10, 20), nextRoundAt - 5);
       } else if (nextReportAt <= currentRoundAt && reportedAt >= currentRoundAt) {
         nextReportAt = sanitizeNextReportAt(reportedAt + roundDuration);
       } else if (currentRoundAt < nextReportAt && nextReportAt < nextRoundAt && reportedAt < currentRoundAt) {

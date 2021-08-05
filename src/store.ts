@@ -7,13 +7,12 @@ import config from "./config";
 
 export interface File {
   reserved?: BigInt,
-  updateAt: number;
   expireAt?: number;
   fileSize?: number;
   countReplicas?: number;
+  countIpfsFails?: number;
   reported?: boolean;
   isPinned?: boolean;
-  countIpfsFail?: number;
   isAdded?: boolean;
   isCommitted?: boolean;
 }
@@ -150,7 +149,7 @@ export default class Store {
   public async markFileIpfsFail(cid: string) {
     const file = this.getFile(cid);
     if (file) {
-      file.countIpfsFail = file.countIpfsFail + 1; 
+      file.countIpfsFails = file.countIpfsFails + 1; 
     }
   }
 
@@ -172,7 +171,6 @@ export default class Store {
   public addStoreFile(cid: string, storeFile: StoreFile) {
     let file = this.files.get(cid) || this.defaultFile();
     file.reserved = storeFile.reserved.toBigInt();
-    file.updateAt = Date.now();
     if (!file.fileSize) file.fileSize = storeFile.file_size.toNumber();
     this.files.set(cid, file);
   }
@@ -184,7 +182,6 @@ export default class Store {
       file.expireAt = fileOrder.expire_at.toNumber();
       file.countReplicas = fileOrder.replicas.length;
       file.reported = !!fileOrder.replicas.find(v => v.eq(this.chain.address));
-      file.updateAt = Date.now();
     }
   }
 
@@ -192,7 +189,6 @@ export default class Store {
     if (this.files.has(cid)) {
       const file = this.files.get(cid);
       file.isPinned = true;
-      file.updateAt = Date.now();
     } 
   }
 
@@ -202,13 +198,11 @@ export default class Store {
       const file = this.files.get(cid);
       file.isAdded = true;
       file.isCommitted = committed;
-      file.updateAt = Date.now();
     } else {
       this.files.set(cid, {
         ...this.defaultFile(),
         isAdded: true,
         isCommitted: committed,
-        updateAt: Date.now(),
       });
     }
   }
@@ -222,7 +216,7 @@ export default class Store {
   }
 
   private isFilePendingIpfs(file: File) {
-    return  this.isFileWorth(file) && !file.isPinned  && file.countIpfsFail < config.ipfs.maxRetries;
+    return  this.isFileWorth(file) && !file.isPinned  && file.countIpfsFails < config.ipfs.maxRetries;
   }
 
   private isFilePendingTea(file: File) {
@@ -241,11 +235,10 @@ export default class Store {
   private defaultFile(): File {
       return {
         reserved: BigInt(0),
-        updateAt: Date.now(),
         expireAt: Number.MAX_SAFE_INTEGER,
         fileSize: 0,
         countReplicas: 0,
-        countIpfsFail: 0,
+        countIpfsFails: 0,
       }
   }
 }
