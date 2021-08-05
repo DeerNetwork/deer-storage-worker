@@ -208,7 +208,7 @@ export default class Store {
   }
 
   private isFileCanReportAdd(file: File) {
-    return this.isFileWorth(file) && file.isPinned && file.isAdded && !file.isCommitted
+    return this.isFileWorth(file) && file.isPinned && file.isAdded;
   }
 
   private isFileCanReportSettle(file: File) {
