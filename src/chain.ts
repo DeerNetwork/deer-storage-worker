@@ -84,33 +84,20 @@ export default class Chain {
     const currentRoundAt = nextRoundAtN.sub(new BN(roundDuration)).toNumber();
     const nextRoundAt = nextRoundAtN.toNumber();
     const node = maybeNode.unwrapOrDefault();
-    let reportedAt = 0;
+    let reportedAt = node.reported_at.toNumber();
     let nextReportAt = this.reportState?.nextReportAt || 0;
-    let randNextReportAt = () => {
-      let ret = _.random(this.now + 10, this.now + 30);
-      if (nextRoundAt - ret < 5) {
-        ret -= _.random(5, 10);
-      }
-      return ret;
-    }
+    let sanitizeNextReportAt = value => value > nextRoundAt + roundDuration - 5 ? _.random(roundDuration, nextRoundAt + roundDuration - 5) : value;
     if (maybeNode.isNone) {
-      nextReportAt = randNextReportAt();
+      nextReportAt = this.now + _.random(10, 20);
     } else {
-      reportedAt = node.reported_at.toNumber();
-      if (reportedAt >= currentRoundAt) {
-        if (nextReportAt >= currentRoundAt && nextReportAt < nextRoundAt) {
-          nextReportAt = nextReportAt + roundDuration;
-        } else if (nextReportAt < currentRoundAt) {
-          nextReportAt = reportedAt + roundDuration;
-        }
-        if (nextRoundAt + roundDuration - nextReportAt < 5) {
-          nextReportAt -= _.random(5, 10);
-        }
+      if (nextReportAt <= currentRoundAt && reportedAt < currentRoundAt) {
+        nextReportAt = Math.min(this.now + _.random(5, 10), nextRoundAt - 5);
+      } else if (nextReportAt <= currentRoundAt && reportedAt >= currentRoundAt) {
+        nextReportAt = sanitizeNextReportAt(reportedAt + roundDuration);
+      } else if (currentRoundAt < nextReportAt && nextReportAt < nextRoundAt && reportedAt < currentRoundAt) {
+      } else if (currentRoundAt < nextReportAt && nextReportAt < nextRoundAt && reportedAt >= currentRoundAt) {
+        nextReportAt = sanitizeNextReportAt(nextReportAt + roundDuration);
       } else {
-        nextReportAt = reportedAt + roundDuration;
-        if (nextReportAt < currentRoundAt) {
-          nextReportAt = randNextReportAt();
-        } 
       }
     }
     this.reportState = {
