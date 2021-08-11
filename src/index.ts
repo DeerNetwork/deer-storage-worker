@@ -20,7 +20,7 @@ class Engine {
   private machine: string;
   private ipfsQueue: MinPriorityQueue<string>;
   private teaQueue: MaxPriorityQueue<Task>;
-  private isReporting = false;
+  private startingReportAt = 0;
   private reportCids: string[];
   private checkPoint = 0;
   private ipfsConcurrency = config.ipfs.concurrency;
@@ -35,8 +35,8 @@ class Engine {
     await this.chain.init();
     let isTeaclaveOk = false;
     do {
-        isTeaclaveOk = await this.initTeaclave();
-      if (!isTeaclaveOk) await sleep(18000);
+      isTeaclaveOk = await this.initTeaclave();
+      if (!isTeaclaveOk) await sleep(3 * config.blockSecs * 1000);
     } while(!isTeaclaveOk);
 
     this.chain.listen();
@@ -54,9 +54,15 @@ class Engine {
         const sholdReport = await this.chain.shouldReport(blockNum);
         const { nextReportAt, reportedAt, nextRoundAt } = this.chain.reportState;
         logger.debug(`blockNum=${blockNum}, ${JSON.stringify({ reportedAt, nextReportAt, nextRoundAt })}`);
-        if (sholdReport && !this.isReporting) {
+        if (sholdReport) {
+          if (this.startingReportAt > 0) {
+            if (blockNum - this.startingReportAt > 60) {
+              this.startingReportAt = 0;
+            }
+          } else {
+            this.startingReportAt = blockNum;
             this.teaQueue.enqueue({ type: "report" }, 4);
-            this.isReporting = true;
+          }
         }
         if (blockNum % 60 === 0) {
           this.checkPending();
@@ -76,7 +82,7 @@ class Engine {
       if (maybeFileOrder.isSome) {
         this.store.addStoreFile(cid, maybeFileOrder.unwrap());
       }
-      if (this.isReporting) {
+      if (this.startingReportAt) {
         logger.debug(`Skip enqueue addFile ${cid}`);
         return;
       } 
@@ -245,7 +251,7 @@ class Engine {
     } catch (e) {
       logger.error(`💥 Fail to report ${e.toString()}`);
     } 
-    this.isReporting = false;
+    this.startingReportAt = 0;
   }
 
   private async commit() {

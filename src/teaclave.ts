@@ -67,13 +67,13 @@ export default class Teaclave {
 
   public async checkFile(cid: string): Promise<TeaFile> {
     const [_, fileSize, committed] = await this.wrapRpc<[string, number, boolean]>("checkFile", () => this.api.get(`/files/${cid}/status`));
-    return { cid, fileSize, committed }
+    return { cid, fileSize, committed };
   }
 
   public async inspectFiles(): Promise<TeaFile[]> {
     const list = await this.wrapRpc<[string, number, boolean][]>("inspectFiles", () => this.api.get("/files"));
     return list.map(([cid, fileSize, committed]) => {
-      return { cid, fileSize, committed }
+      return { cid, fileSize, committed };
     });
   }
 

@@ -37,7 +37,7 @@ export default class Chain {
   public constants: ChainConstants;
   public keyPair: KeyringPair;
   public reportState: ReportState;
-  public now: number = 0;
+  public now = 0;
 
   private api: ApiPromise;
   private unsubscribeEvents: () => void;
@@ -84,9 +84,9 @@ export default class Chain {
     const currentRoundAt = nextRoundAtN.sub(new BN(roundDuration)).toNumber();
     const nextRoundAt = nextRoundAtN.toNumber();
     const node = maybeNode.unwrapOrDefault();
-    let reportedAt = node.reported_at.toNumber();
+    const reportedAt = node.reported_at.toNumber();
     let nextReportAt = this.reportState?.nextReportAt || 0;
-    let sanitizeNextReportAt = value => value > nextRoundAt + roundDuration - 5 ? _.random(roundDuration, nextRoundAt + roundDuration - 5) : value;
+    const sanitizeNextReportAt = value => value > nextRoundAt + roundDuration - 5 ? _.random(roundDuration, nextRoundAt + roundDuration - 5) : value;
     if (maybeNode.isNone) {
       nextReportAt = this.now + _.random(10, 20);
     } else {
@@ -165,7 +165,7 @@ export default class Chain {
 
   public async listFileOrders() {
     const fileOrders = await this.api.query.fileStorage.fileOrders.entries();
-    return fileOrders.map(fileOrder => ({ cid: hex2str(fileOrder[0].args[0].toString()), fileOrder: fileOrder[1].unwrap() }))
+    return fileOrders.map(fileOrder => ({ cid: hex2str(fileOrder[0].args[0].toString()), fileOrder: fileOrder[1].unwrap() }));
   }
 
   private sendTx(tx: SubmittableExtrinsic): Promise<TxRes> {
@@ -257,6 +257,9 @@ export default class Chain {
         } else if (method === "StoreFileRemoved") {
           const cid = hex2str(data[0].toString());
           emitter.emit("file:del", cid);
+        } else if (method === "FileForceDeleted") {
+          const cid = hex2str(data[0].toString());
+          emitter.emit("file:del", cid);
         } else if (method === "NodeReported") {
           if (data[0].eq(this.address)) {
             emitter.emit("reported");
@@ -288,7 +291,7 @@ export default class Chain {
       await this.init(); 
     }
     while (await this.isSyncing()) {
-      const header = await this.header()
+      const header = await this.header();
       logger.info(
         `⛓  Chain is synchronizing, current block number ${header.number.toNumber()}`
       );

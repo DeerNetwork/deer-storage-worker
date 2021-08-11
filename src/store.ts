@@ -164,12 +164,12 @@ export default class Store {
         this.addTeaFile(teaFile);
       } catch (err) {
         logger.warn(`Fail to check report cid ${cid}`);
-       }
+      }
     }
   }
 
   public addStoreFile(cid: string, storeFile: StoreFile) {
-    let file = this.files.get(cid) || this.defaultFile();
+    const file = this.files.get(cid) || this.defaultFile();
     file.reserved = storeFile.reserved.toBigInt();
     if (!file.fileSize) file.fileSize = storeFile.file_size.toNumber();
     this.files.set(cid, file);
@@ -233,12 +233,12 @@ export default class Store {
   }
 
   private defaultFile(): File {
-      return {
-        reserved: BigInt(0),
-        expireAt: Number.MAX_SAFE_INTEGER,
-        fileSize: 0,
-        countReplicas: 0,
-        countIpfsFails: 0,
-      }
+    return {
+      reserved: BigInt(0),
+      expireAt: Number.MAX_SAFE_INTEGER,
+      fileSize: 0,
+      countReplicas: 0,
+      countIpfsFails: 0,
+    };
   }
 }
