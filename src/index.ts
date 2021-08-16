@@ -108,7 +108,8 @@ class Engine {
       }
       const stash = maybeStash.unwrap();
       if (stash.machine_id.isNone) {
-        return this.registerTeaclave();
+        await this.registerTeaclave();
+        return false;
       }
       const system = await this.teaclave.system();
       const machine = stash.machine_id.unwrap().toString();
@@ -117,14 +118,17 @@ class Engine {
         return false;
       }
       if (!system.enclave) {
-        return this.registerTeaclave();
+        await this.registerTeaclave();
+        return false;
       }
       const maybeRegister = await this.chain.getRegister(machine);
       if (maybeRegister.isNone) {
-        return this.registerTeaclave();
+        await this.registerTeaclave();
+        return false;
       }
       if (maybeRegister.unwrap().enclave.toHex() !== "0x" + system.enclave) {
-        return this.registerTeaclave();
+        await this.registerTeaclave();
+        return false;
       }
       if (this.chain.reportState.rid && system.cursor_committed !== this.chain.reportState.rid) {
         await this.teaQueue.enqueue({ type: "commit" }, 4);
@@ -132,21 +136,24 @@ class Engine {
       this.machine = machine;
       return true;
     } catch (err) {
-      logger.error(`💥 Fail to init teaclave ${err.toString()}`);
+      if (/teaclave.attest: connect ECONNREFUSED/.test(err.message)) {
+        logger.warn("💥 Waiting for teaclave ready");
+        return false;
+      }
+      logger.error(`💥 Fail to init teaclave, ${err.toString()}`);
       return false;
     }
   }
 
   private async registerTeaclave() {
     const attest = await this.teaclave.attest();
-    if (!attest) return false;
+    if (!attest) return;
     const res = await this.chain.register(attest);
     if (res.status === "failed") {
       fatal("Fail to register node");
-      return false;
+      return;
     }
     logger.info("✨ Register node successed");
-    return false;
   }
 
   private async runIpfsQueue() {
