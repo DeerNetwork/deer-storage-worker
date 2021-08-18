@@ -1,5 +1,5 @@
 import { ApiPromise, WsProvider } from "@polkadot/api";
-import { typesBundleForPolkadot } from "@nft360/type-definitions";
+import { typesBundleForPolkadot } from "@deernetwork/type-definitions";
 import { SubmittableExtrinsic } from "@polkadot/api/promise/types";
 import { DispatchError } from "@polkadot/types/interfaces";
 import { ITuple } from "@polkadot/types/types";

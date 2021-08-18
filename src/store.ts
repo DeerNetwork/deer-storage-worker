@@ -1,7 +1,7 @@
 import { Ipfs } from "./ipfs";
 import Chain from "./chain";
 import Teaclave, { TeaFile } from "./teaclave";
-import { FileOrder, StoreFile } from "@nft360/type-definitions/dist/interfaces/fileStorage";
+import { FileOrder, StoreFile } from "@deernetwork/type-definitions/dist/interfaces/fileStorage";
 import { logger } from "./utils";
 import config from "./config";
 

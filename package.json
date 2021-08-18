@@ -1,7 +1,7 @@
 {
-  "name": "@nft360/nft360-storage-host",
+  "name": "@deernetwork/deer-storage-host",
   "version": "0.1.0",
-  "description": "Storage host for Nft360 Network",
+  "description": "Storage host for Deer Network",
   "license": "MIT",
   "publishConfig": {
     "access": "public"
@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@datastructures-js/priority-queue": "^5.1.1",
-    "@nft360/type-definitions": "^0.3.1",
+    "@deernetwork/type-definitions": "^0.1.1",
     "@polkadot/api": "^5.1.1",
     "@types/lodash": "^4.14.171",
     "axios": "^0.21.1",
