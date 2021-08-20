@@ -52,8 +52,6 @@ class Engine {
       try {
         const blockNum = header.number.toNumber();
         const sholdReport = await this.chain.shouldReport(blockNum);
-        const { nextReportAt, reportedAt, nextRoundAt } = this.chain.reportState;
-        logger.debug(`blockNum=${blockNum}, ${JSON.stringify({ reportedAt, nextReportAt, nextRoundAt })}`);
         if (sholdReport) {
           if (this.startingReportAt > 0) {
             if (blockNum - this.startingReportAt > 60) {
@@ -65,6 +63,8 @@ class Engine {
           }
         }
         if (blockNum % 60 === 0) {
+          const { nextReportAt, reportedAt, nextRoundAt } = this.chain.reportState;
+          logger.debug(`blockNum=${blockNum}, ${JSON.stringify({ reportedAt, nextReportAt, nextRoundAt })}`);
           this.checkPending();
         }
       } catch (e) {
@@ -245,15 +245,23 @@ class Engine {
   private async report() {
     try {
       logger.debug("Worker trying to report works");
-      const { reported } = await this.chain.getReportState();
+      const { reported, rid } = await this.chain.getReportState();
       if (reported) return;
+      const system = await this.teaclave.system();
+      if (system.cursor_committed < rid) {
+        logger.debug("Worker trying to commit miss report");
+        await this.teaclave.commitReport(rid);
+      }
       const { addFiles, settleFiles } =  await this.store.getReportFiles();
       const reportData = await this.teaclave.preparePeport(addFiles);
       const res = await this.chain.reportWork(this.machine, reportData, settleFiles);
       if (res.status === "failed") {
         fatal("Fail to report work");
       }
-      this.reportCids = [...addFiles, ...settleFiles];
+      this.reportCids = [
+        ...addFiles.slice(0, this.chain.constants.maxReportFiles), 
+        ...settleFiles.slice(0, this.chain.constants.maxReportFiles),
+      ];
       logger.info("✨ Report node successed");
     } catch (e) {
       logger.error(`💥 Fail to report ${e.toString()}`);
@@ -261,11 +269,12 @@ class Engine {
     this.startingReportAt = 0;
   }
 
+
   private async commit() {
     try {
       logger.debug("Worker trying to commit report");
-      await this.chain.getReportState();
-      await this.teaclave.commitReport(this.chain.reportState.rid);
+      const { rid } = await this.chain.getReportState();
+      await this.teaclave.commitReport(rid);
       this.afterCommit();
       logger.info("✨ Commit report successed");
     } catch (e) {
