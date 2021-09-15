@@ -146,12 +146,11 @@ export default class Chain {
   public async reportWork(machine: string, data: PrepareReportRes, settleFiles: string[]) {
     logger.debug(`Report works with args: ${machine} ${JSON.stringify(data)}, ${JSON.stringify(settleFiles)}`);
     const tx = await this.api.tx.fileStorage.report(
-      machine,
       data.rid,
+      data.power,
       formatHexArr(data.sig),
       data.add_files,
       data.del_files,
-      data.power,
       settleFiles,
     );
 
