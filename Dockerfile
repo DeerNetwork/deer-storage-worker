@@ -1,7 +1,7 @@
 FROM node:14-alpine
 WORKDIR /app
 COPY package.json yarn.lock ./
-RUN yarn --prod && rm -rf .npmrc
+RUN yarn --prod
 
 FROM node:14-alpine
 WORKDIR /app

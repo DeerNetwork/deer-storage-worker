@@ -5,6 +5,7 @@
     "module": "commonjs",
     "declaration": true,
     "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
     "target": "es6",
     "sourceMap": false,
     "lib": ["ES2018"],
