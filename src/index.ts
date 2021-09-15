@@ -5,7 +5,7 @@ import Store from "./store";
 import emitter from "./emitter";
 import config from "./config";
 import { fatal, logger, sleep } from "./utils";
-import { MaxPriorityQueue, MinPriorityQueue } from "@datastructures-js/priority-queue";
+import { MaxPriorityQueue, MinPriorityQueue, PriorityQueueItem } from "@datastructures-js/priority-queue";
 
 interface Task {
   type: "addFile" | "delFile" | "report" | "commit",
@@ -162,7 +162,7 @@ class Engine {
         await sleep(2000);
         continue;
       }
-      const { element: cid } = this.ipfsQueue.dequeue();
+      const { element: cid } = this.ipfsQueue.dequeue() as PriorityQueueItem<string>;
       this.ipfsConcurrency += 1;
       await this.addIpfsFile(cid);
     }
@@ -174,7 +174,7 @@ class Engine {
         await sleep(2000);
         continue;
       }
-      const { element: task } = this.teaQueue.dequeue();
+      const { element: task } = this.teaQueue.dequeue() as PriorityQueueItem<Task>;
       if (task.type === "addFile") {
         await this.addTeaFile(task.cid);
       } else if (task.type === "delFile") {
