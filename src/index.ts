@@ -140,6 +140,10 @@ class Engine {
         logger.warn("💥 Waiting for teaclave ready");
         return false;
       }
+      if (/Invalid Transaction: Transaction has a bad signature/.test(err.message)) {
+        fatal("💥 Fail to call tx");
+        return false;
+      }
       logger.error(`💥 Fail to init teaclave, ${err.toString()}`);
       return false;
     }

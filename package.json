@@ -1,6 +1,6 @@
 {
   "name": "@deernetwork/deer-storage-worker",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Storage worker for Deer Network as bridge between chain and storage teaclave.",
   "license": "MIT",
   "publishConfig": {
@@ -20,7 +20,7 @@
   },
   "dependencies": {
     "@datastructures-js/priority-queue": "^5.2.0",
-    "@deernetwork/type-definitions": "0.2.0",
+    "@deernetwork/type-definitions": "^0.2.3",
     "@polkadot/api": "^5.9.1",
     "@types/lodash": "^4.14.172",
     "axios": "^0.21.4",

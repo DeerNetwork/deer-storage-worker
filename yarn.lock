@@ -70,10 +70,10 @@
   dependencies:
     "@datastructures-js/heap" "^3.2.0"
 
-"@deernetwork/type-definitions@0.2.0":
-  version "0.2.0"
-  resolved "https://registry.yarnpkg.com/@deernetwork/type-definitions/-/type-definitions-0.2.0.tgz#a7b1aa02dc45dcf773d6cdc156b9652f3f48b315"
-  integrity sha512-jqg2K4ckClMGvuyXJAlaOCuxb2s2MsbAfLcjFDNt6Qe8lUQaCCZteITwPS5pQ5wSBErmi1fMrsIKpnSsaeCJIA==
+"@deernetwork/type-definitions@^0.2.3":
+  version "0.2.3"
+  resolved "https://registry.yarnpkg.com/@deernetwork/type-definitions/-/type-definitions-0.2.3.tgz#c900f4926ac118caa82869152a6f8688d6af4652"
+  integrity sha512-sCzqu/cugwZb1KxXdfSPyG1N8LBV6UZCZRJBU79P9c7Xswi69xCXN15d5u+7zUN0rt6+P5TwvlRnQPMlM3eddw==
 
 "@eslint/eslintrc@^0.4.3":
   version "0.4.3"
