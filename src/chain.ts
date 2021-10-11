@@ -59,7 +59,7 @@ export default class Chain {
   }
 
   public get address() {
-    return this.keyPair.address;
+    return this.api.createType("AccountId", this.keyPair.address).toString();
   }
 
   public async listen() {

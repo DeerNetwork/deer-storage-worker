@@ -38,6 +38,7 @@ class Engine {
       isTeaclaveOk = await this.initTeaclave();
       if (!isTeaclaveOk) await sleep(3 * config.blockSecs * 1000);
     } while(!isTeaclaveOk);
+    logger.info(`Controller Account is ${this.chain.address}`);
 
     this.chain.listen();
     this.checkPoint = this.chain.now;
@@ -47,6 +48,8 @@ class Engine {
     setInterval(() => {
       this.checkInterval();
     }, 60000);
+    const { nextReportAt, reportedAt, nextRoundAt } = this.chain.reportState;
+    logger.info(`blockNum=${this.chain.now}, ${JSON.stringify({ reportedAt, nextReportAt, nextRoundAt })}`);
 
     emitter.on("header", async header => {
       try {
@@ -64,7 +67,7 @@ class Engine {
         }
         if (blockNum % 60 === 0) {
           const { nextReportAt, reportedAt, nextRoundAt } = this.chain.reportState;
-          logger.debug(`blockNum=${blockNum}, ${JSON.stringify({ reportedAt, nextReportAt, nextRoundAt })}`);
+          logger.info(`blockNum=${blockNum}, ${JSON.stringify({ reportedAt, nextReportAt, nextRoundAt })}`);
           this.checkPending();
         }
       } catch (e) {
