@@ -12,7 +12,7 @@ export default function makeIpfs() {
         const timeout = config.ipfs.pinTimeout + (fileSize / 1024 / 200) * 1000;
         await ipfs.pin.add(cid, { timeout });
         logger.debug(`ipfs.pinAdd ${cid}`);
-        return true
+        return true;
       } catch (err) {
         throw new Error(`ipfs.pinAdd ${cid}, ${err.message}`);
       }
