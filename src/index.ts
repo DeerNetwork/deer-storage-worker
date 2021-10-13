@@ -33,12 +33,12 @@ class Engine {
     this.teaQueue = new MaxPriorityQueue();
     this.store = new Store();
     await this.chain.init();
+    logger.info(`Controller Account is ${this.chain.address}`);
     let isTeaclaveOk = false;
     do {
       isTeaclaveOk = await this.initTeaclave();
       if (!isTeaclaveOk) await sleep(3 * config.blockSecs * 1000);
     } while(!isTeaclaveOk);
-    logger.info(`Controller Account is ${this.chain.address}`);
 
     this.chain.listen();
     this.checkPoint = this.chain.now;
