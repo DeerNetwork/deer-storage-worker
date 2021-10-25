@@ -232,6 +232,7 @@ export default class Chain {
   }
 
   private initAccount() {
+    if (this.keyPair) return;
     const keyring = new Keyring({ type: "sr25519" });
     this.keyPair = keyring.createFromUri(config.mnemonic);
   }
@@ -296,6 +297,9 @@ export default class Chain {
       );
       await sleep(6000);
     }
+    logger.info(
+      `⛓  Chain have synced, current block number ${this.now}`
+    );
   }
 
   private async header() {
@@ -307,7 +311,7 @@ export default class Chain {
   private async waitApiReady() {
     try {
       await this.api.isReadyOrError;
-      logger.info(`⚡️ Chain info: ${this.api.runtimeChain}, ${this.api.runtimeVersion}`);
+      logger.info(`⚡️ Chain info: ${this.api.runtimeChain}, ${this.api.runtimeVersion.specVersion}`);
       return true;
     } catch (e) {
       logger.error(`💥 Error connecting with chain: ${e.toString()}`);
