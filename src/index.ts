@@ -10,7 +10,7 @@ import {
   MinPriorityQueue,
   PriorityQueueItem,
 } from "@datastructures-js/priority-queue";
-const pkg = require("../package.json");
+const pkg = require("../package.json"); // eslint-disable-line
 interface Task {
   type: "addFile" | "delFile" | "report" | "commit";
   cid?: string;
