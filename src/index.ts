@@ -6,6 +6,7 @@ import emitter from "./emitter";
 import config from "./config";
 import { fatal, logger, sleep } from "./utils";
 import { MaxPriorityQueue, MinPriorityQueue, PriorityQueueItem } from "@datastructures-js/priority-queue";
+import { version } from "../package.json"
 
 interface Task {
   type: "addFile" | "delFile" | "report" | "commit",
@@ -26,6 +27,7 @@ class Engine {
   private ipfsConcurrency = config.ipfs.concurrency;
 
   public async init() {
+    logger.info(`Worker v${version}`);
     this.chain = new Chain();
     this.ipfs = makeIpfs();
     this.teaclave = new Teaclave();
@@ -38,7 +40,7 @@ class Engine {
     do {
       isTeaclaveOk = await this.initTeaclave();
       if (!isTeaclaveOk) await sleep(3 * config.blockSecs * 1000);
-    } while(!isTeaclaveOk);
+    } while (!isTeaclaveOk);
 
     this.chain.listen();
     this.checkPoint = this.chain.now;
@@ -88,7 +90,7 @@ class Engine {
       if (this.startingReportAt) {
         logger.debug(`Skip enqueue addFile ${cid}`);
         return;
-      } 
+      }
       logger.debug(`IpfsQueue addFile ${cid}`);
       this.ipfsQueue.enqueue(cid, this.chain.getReportInterval());
     });
@@ -259,20 +261,20 @@ class Engine {
         logger.debug("Worker trying to commit miss report");
         await this.teaclave.commitReport(rid);
       }
-      const { addFiles, settleFiles } =  await this.store.getReportFiles();
+      const { addFiles, settleFiles } = await this.store.getReportFiles();
       const reportData = await this.teaclave.preparePeport(addFiles);
       const res = await this.chain.reportWork(this.machine, reportData, settleFiles);
       if (res.status === "failed") {
         fatal("Fail to report work");
       }
       this.reportCids = [
-        ...addFiles.slice(0, this.chain.constants.maxReportFiles), 
+        ...addFiles.slice(0, this.chain.constants.maxReportFiles),
         ...settleFiles.slice(0, this.chain.constants.maxReportFiles),
       ];
       logger.info("✨ Report node successed");
     } catch (e) {
       logger.error(`💥 Fail to report ${e.toString()}`);
-    } 
+    }
     this.startingReportAt = 0;
   }
 
@@ -292,15 +294,15 @@ class Engine {
   private async afterCommit() {
     try {
       await this.store.checkReportCids(this.reportCids);
-    } catch {}
+    } catch { }
   }
-  
+
   private async checkInterval() {
     try {
       if (this.chain.now === this.checkPoint) {
         await this.chain.init();
       }
-    } catch {}
+    } catch { }
     this.checkPoint = this.chain.now;
   }
 
@@ -314,7 +316,7 @@ class Engine {
       for (const cid of myFiles.teaFiles) {
         this.teaQueue.enqueue({ type: "addFile", cid }, 3);
       }
-    } catch {}
+    } catch { }
   }
 }
 

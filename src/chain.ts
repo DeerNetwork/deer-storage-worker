@@ -286,9 +286,9 @@ export default class Chain {
 
   private async waitReady() {
     while (!(await this.waitApiReady())) {
-      logger.info("⛓  Connection broken, waiting for chain running.");
+      logger.warn("⛓  Connection broken, waiting for chain running.");
       await sleep(config.blockSecs * 1000); 
-      await this.init(); 
+      return this.init(); 
     }
     while (await this.isSyncing()) {
       const header = await this.header();
