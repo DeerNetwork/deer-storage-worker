@@ -10,8 +10,7 @@ import {
   MinPriorityQueue,
   PriorityQueueItem,
 } from "@datastructures-js/priority-queue";
-import { version } from "../package.json";
-
+const pkg = require("../package.json");
 interface Task {
   type: "addFile" | "delFile" | "report" | "commit";
   cid?: string;
@@ -31,7 +30,7 @@ class Engine {
   private ipfsConcurrency = config.ipfs.concurrency;
 
   public async init() {
-    logger.info(`Worker v${version}`);
+    logger.info(`Worker v${pkg.version}`);
     this.chain = new Chain();
     this.ipfs = makeIpfs();
     this.teaclave = new Teaclave();
