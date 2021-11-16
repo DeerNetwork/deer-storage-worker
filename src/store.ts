@@ -1,12 +1,15 @@
 import { Ipfs } from "./ipfs";
 import Chain from "./chain";
 import Teaclave, { TeaFile } from "./teaclave";
-import { FileOrder, StoreFile } from "@deernetwork/type-definitions/dist/interfaces/fileStorage";
+import {
+  FileOrder,
+  StoreFile,
+} from "@deernetwork/type-definitions/dist/interfaces/fileStorage";
 import { logger } from "./utils";
 import config from "./config";
 
 export interface File {
-  reserved?: BigInt,
+  reserved?: BigInt;
   expireAt?: number;
   fileSize?: number;
   countReplicas?: number;
@@ -30,11 +33,11 @@ export default class Store {
     this.teaclave = teaclave;
 
     const storeFiles = await this.chain.listStoreFiles();
-    for (const {cid, storeFile} of storeFiles) {
+    for (const { cid, storeFile } of storeFiles) {
       this.addStoreFile(cid, storeFile);
     }
     const fileOrders = await this.chain.listFileOrders();
-    for (const {cid, fileOrder} of fileOrders) {
+    for (const { cid, fileOrder } of fileOrders) {
       this.addFileOrder(cid, fileOrder);
     }
     const cids = await this.ipfs.pinList();
@@ -49,7 +52,7 @@ export default class Store {
       this.deleteDirtyFile(cid);
     }
   }
-  
+
   public getFile(cid: string): File {
     return this.files.get(cid);
   }
@@ -68,7 +71,7 @@ export default class Store {
   }
 
   public async getReportFiles() {
-    const toCheckCids = [];
+    const toCheckCids: string[] = [];
     for (const [cid, file] of this.files.entries()) {
       if (this.isFileCanReportAdd(file)) {
         toCheckCids.push(cid);
@@ -79,14 +82,16 @@ export default class Store {
         continue;
       }
     }
-    await Promise.all(toCheckCids.map(async cid => {
-      const maybeFileOrder = await this.chain.getFileOrder(cid);
-      if (maybeFileOrder.isSome) {
-        this.addFileOrder(cid, maybeFileOrder.unwrap());
-      }
-    }));
-    const addFiles = [];
-    const settleFiles = [];
+    await Promise.all(
+      toCheckCids.map(async (cid) => {
+        const maybeFileOrder = await this.chain.getFileOrder(cid);
+        if (maybeFileOrder.isSome) {
+          this.addFileOrder(cid, maybeFileOrder.unwrap());
+        }
+      })
+    );
+    const addFiles: string[] = [];
+    const settleFiles: string[] = [];
     for (const [cid, file] of this.files.entries()) {
       if (this.isFileCanReportAdd(file)) {
         addFiles.push(cid);
@@ -149,7 +154,7 @@ export default class Store {
   public async markFileIpfsFail(cid: string) {
     const file = this.getFile(cid);
     if (file) {
-      file.countIpfsFails = file.countIpfsFails + 1; 
+      file.countIpfsFails = file.countIpfsFails + 1;
     }
   }
 
@@ -181,7 +186,9 @@ export default class Store {
       file.fileSize = fileOrder.file_size.toNumber();
       file.expireAt = fileOrder.expire_at.toNumber();
       file.countReplicas = fileOrder.replicas.length;
-      file.reported = !!fileOrder.replicas.find(v => v.eq(this.chain.address));
+      file.reported = !!fileOrder.replicas.find((v) =>
+        v.eq(this.chain.address)
+      );
     }
   }
 
@@ -189,7 +196,7 @@ export default class Store {
     if (this.files.has(cid)) {
       const file = this.files.get(cid);
       file.isPinned = true;
-    } 
+    }
   }
 
   public addTeaFile(teaFile: TeaFile) {
@@ -216,7 +223,11 @@ export default class Store {
   }
 
   private isFilePendingIpfs(file: File) {
-    return  this.isFileWorth(file) && !file.isPinned  && file.countIpfsFails < config.ipfs.maxRetries;
+    return (
+      this.isFileWorth(file) &&
+      !file.isPinned &&
+      file.countIpfsFails < config.ipfs.maxRetries
+    );
   }
 
   private isFilePendingTea(file: File) {
@@ -224,12 +235,18 @@ export default class Store {
   }
 
   private isFileWorth(file: File) {
-    return !file.reported && (file.countReplicas || 0) < this.chain.constants.maxFileReplicas;
+    return (
+      !file.reported &&
+      (file.countReplicas || 0) < this.chain.constants.maxFileReplicas
+    );
   }
 
   private isFileDirty(file: File) {
-    return (file.reserved === BigInt(0) && file.expireAt < this.chain.now) ||
-      (!file.reported && file.countReplicas >= this.chain.constants.maxFileReplicas);
+    return (
+      (file.reserved === BigInt(0) && file.expireAt < this.chain.now) ||
+      (!file.reported &&
+        file.countReplicas >= this.chain.constants.maxFileReplicas)
+    );
   }
 
   private defaultFile(): File {

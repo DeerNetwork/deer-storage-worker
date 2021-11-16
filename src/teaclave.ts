@@ -12,16 +12,16 @@ export interface SystemRes {
 }
 
 export interface AttestRes {
-  ias_body: string,
-  ias_cert: string,
-  ias_sig: string,
-  machine_id: number[],
-  sig: number[],
+  ias_body: string;
+  ias_cert: string;
+  ias_sig: string;
+  machine_id: number[];
+  sig: number[];
 }
 
 export interface PrepareReportRes {
-  add_files: [string, number][],
-  del_files: string[],
+  add_files: [string, number][];
+  del_files: string[];
   power: number;
   rid: number;
   sig: number[];
@@ -41,20 +41,26 @@ export default class Teaclave {
     });
   }
 
-  public async system(): Promise<SystemRes>  {
+  public async system(): Promise<SystemRes> {
     return this.wrapRpc("system", () => this.api.get("/system"));
   }
 
   public async attest(): Promise<AttestRes> {
-    return this.wrapRpc("attest", () => this.api.get("/attest", { timeout: 60000 }));
+    return this.wrapRpc("attest", () =>
+      this.api.get("/attest", { timeout: 60000 })
+    );
   }
 
   public async preparePeport(files: string[]): Promise<PrepareReportRes> {
-    return this.wrapRpc("preparePeport", () => this.api.post("/report/prepare", { files }));
+    return this.wrapRpc("preparePeport", () =>
+      this.api.post("/report/prepare", { files })
+    );
   }
 
   public async commitReport(rid: number): Promise<any> {
-    return this.wrapRpc("commitReport", () => this.api.post(`/report/commit/${rid}`));
+    return this.wrapRpc("commitReport", () =>
+      this.api.post(`/report/commit/${rid}`)
+    );
   }
 
   public async addFile(cid: string): Promise<{ size: number }> {
@@ -66,18 +72,26 @@ export default class Teaclave {
   }
 
   public async checkFile(cid: string): Promise<TeaFile> {
-    const [_, fileSize, committed] = await this.wrapRpc<[string, number, boolean]>("checkFile", () => this.api.get(`/files/${cid}/status`));
+    const [, fileSize, committed] = await this.wrapRpc<
+      [string, number, boolean]
+    >("checkFile", () => this.api.get(`/files/${cid}/status`));
     return { cid, fileSize, committed };
   }
 
   public async inspectFiles(): Promise<TeaFile[]> {
-    const list = await this.wrapRpc<[string, number, boolean][]>("inspectFiles", () => this.api.get("/files"));
+    const list = await this.wrapRpc<[string, number, boolean][]>(
+      "inspectFiles",
+      () => this.api.get("/files")
+    );
     return list.map(([cid, fileSize, committed]) => {
       return { cid, fileSize, committed };
     });
   }
 
-  async wrapRpc<T>(name: string, rpc: () => Promise<AxiosResponse<T>>): Promise<T> {
+  async wrapRpc<T>(
+    name: string,
+    rpc: () => Promise<AxiosResponse<T>>
+  ): Promise<T> {
     try {
       const res = await rpc();
       logger.debug(
@@ -91,5 +105,4 @@ export default class Teaclave {
       throw new Error(`teaclave.${name}: ${e.message}`);
     }
   }
-
 }

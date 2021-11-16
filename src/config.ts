@@ -1,7 +1,7 @@
 import { readEnv } from "read-env";
 import * as _ from "lodash";
 
-const config =  {
+const config = {
   blockSecs: 6,
   mnemonic: "//Alice",
   logLevel: "debug",

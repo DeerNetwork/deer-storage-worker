@@ -1,4 +1,4 @@
-import {  create  } from "ipfs-http-client";
+import { create } from "ipfs-http-client";
 import { logger } from "./utils";
 import config from "./config";
 
@@ -41,7 +41,11 @@ export default function makeIpfs() {
     },
     async pinCheck(cid: string): Promise<boolean> {
       try {
-        for await (const { cid: cidObj } of ipfs.pin.ls({ type: "recursive", paths: cid, timeout: 10000 })) {
+        for await (const { cid: cidObj } of ipfs.pin.ls({
+          type: "recursive",
+          paths: cid,
+          timeout: 10000,
+        })) {
           if (cidObj.toString() === cid) {
             return true;
           }
@@ -56,7 +60,9 @@ export default function makeIpfs() {
     },
     async size(cid: string): Promise<number> {
       try {
-        const info = await ipfs.object.stat(cid as any, { timeout: config.ipfs.sizeTimeout });
+        const info = await ipfs.object.stat(cid as any, {
+          timeout: config.ipfs.sizeTimeout,
+        });
         return info.CumulativeSize;
       } catch (err) {
         throw new Error(`ipfs.size ${cid}, ${err.message}`);

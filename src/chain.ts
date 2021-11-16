@@ -5,7 +5,7 @@ import { DispatchError } from "@polkadot/types/interfaces";
 import { ITuple } from "@polkadot/types/types";
 import * as BN from "bn.js";
 import config from "./config";
-import { logger, sleep, hex2str, formatHexArr} from "./utils";
+import { logger, sleep, hex2str, formatHexArr } from "./utils";
 import emitter from "./emitter";
 import { AttestRes, PrepareReportRes } from "./teaclave";
 import { Keyring } from "@polkadot/keyring";
@@ -52,10 +52,7 @@ export default class Chain {
     });
     await this.waitReady();
     await this.initAccount();
-    Promise.all([
-      await this.syncConstants(),
-      await this.getReportState(),
-    ]);
+    Promise.all([await this.syncConstants(), await this.getReportState()]);
   }
 
   public get address() {
@@ -66,7 +63,7 @@ export default class Chain {
     await this.listenBlocks();
     await this.listenEvents();
   }
-  
+
   public async getFileOrder(cid: string) {
     return this.api.query.fileStorage.fileOrders(cid);
   }
@@ -86,16 +83,30 @@ export default class Chain {
     const node = maybeNode.unwrapOrDefault();
     const reportedAt = node.reported_at.toNumber();
     let nextReportAt = this.reportState?.nextReportAt || 0;
-    const sanitizeNextReportAt = value => value > nextRoundAt + roundDuration - 5 ? _.random(roundDuration, nextRoundAt + roundDuration - 5) : value;
+    const sanitizeNextReportAt = (value) =>
+      value > nextRoundAt + roundDuration - 5
+        ? _.random(roundDuration, nextRoundAt + roundDuration - 5)
+        : value;
     if (maybeNode.isNone) {
       nextReportAt = this.now + _.random(10, 20);
     } else {
       if (nextReportAt <= currentRoundAt && reportedAt < currentRoundAt) {
         nextReportAt = Math.min(this.now + _.random(10, 20), nextRoundAt - 5);
-      } else if (nextReportAt <= currentRoundAt && reportedAt >= currentRoundAt) {
+      } else if (
+        nextReportAt <= currentRoundAt &&
+        reportedAt >= currentRoundAt
+      ) {
         nextReportAt = sanitizeNextReportAt(reportedAt + roundDuration);
-      } else if (currentRoundAt < nextReportAt && nextReportAt < nextRoundAt && reportedAt < currentRoundAt) {
-      } else if (currentRoundAt < nextReportAt && nextReportAt < nextRoundAt && reportedAt >= currentRoundAt) {
+      } else if (
+        currentRoundAt < nextReportAt &&
+        nextReportAt < nextRoundAt &&
+        reportedAt < currentRoundAt
+      ) {
+      } else if (
+        currentRoundAt < nextReportAt &&
+        nextReportAt < nextRoundAt &&
+        reportedAt >= currentRoundAt
+      ) {
         nextReportAt = sanitizeNextReportAt(nextReportAt + roundDuration);
       } else {
       }
@@ -138,20 +149,28 @@ export default class Chain {
       data.ias_cert,
       data.ias_sig,
       data.ias_body,
-      formatHexArr(data.sig),
+      formatHexArr(data.sig)
     );
     return this.sendTx(tx);
   }
 
-  public async reportWork(machine: string, data: PrepareReportRes, settleFiles: string[]) {
-    logger.debug(`Report works with args: ${machine} ${JSON.stringify(data)}, ${JSON.stringify(settleFiles)}`);
+  public async reportWork(
+    machine: string,
+    data: PrepareReportRes,
+    settleFiles: string[]
+  ) {
+    logger.debug(
+      `Report works with args: ${machine} ${JSON.stringify(
+        data
+      )}, ${JSON.stringify(settleFiles)}`
+    );
     const tx = await this.api.tx.fileStorage.report(
       data.rid,
       data.power,
       formatHexArr(data.sig),
       data.add_files,
       data.del_files,
-      settleFiles,
+      settleFiles
     );
 
     return this.sendTx(tx);
@@ -159,17 +178,23 @@ export default class Chain {
 
   public async listStoreFiles() {
     const storeFiles = await this.api.query.fileStorage.storeFiles.entries();
-    return storeFiles.map(storeFile => ({ cid: hex2str(storeFile[0].args[0].toString()), storeFile: storeFile[1].unwrap() }));
+    return storeFiles.map((storeFile) => ({
+      cid: hex2str(storeFile[0].args[0].toString()),
+      storeFile: storeFile[1].unwrap(),
+    }));
   }
 
   public async listFileOrders() {
     const fileOrders = await this.api.query.fileStorage.fileOrders.entries();
-    return fileOrders.map(fileOrder => ({ cid: hex2str(fileOrder[0].args[0].toString()), fileOrder: fileOrder[1].unwrap() }));
+    return fileOrders.map((fileOrder) => ({
+      cid: hex2str(fileOrder[0].args[0].toString()),
+      fileOrder: fileOrder[1].unwrap(),
+    }));
   }
 
   private sendTx(tx: SubmittableExtrinsic): Promise<TxRes> {
     return new Promise((resolve, reject) => {
-      tx.signAndSend(this.keyPair, ({events = [], status}) => {
+      tx.signAndSend(this.keyPair, ({ events = [], status }) => {
         logger.info(
           `  ↪ 💸 Transaction status: ${status.type}, nonce: ${tx.nonce}`
         );
@@ -180,9 +205,11 @@ export default class Chain {
         }
 
         if (status.isInBlock) {
-          events.forEach(({event: {data, method, section}}) => {
+          events.forEach(({ event: { data, method, section } }) => {
             if (section === "system" && method === "ExtrinsicFailed") {
-              const [dispatchError] = data as unknown as ITuple<[DispatchError]>;
+              const [dispatchError] = data as unknown as ITuple<
+                [DispatchError]
+              >;
               const result: TxRes = {
                 status: "failed",
                 message: dispatchError.type,
@@ -205,15 +232,13 @@ export default class Chain {
                 status: "success",
               };
 
-              logger.info(
-                `  ↪ 💸 ✅ Send transaction(${tx.type}) success.`
-              );
+              logger.info(`  ↪ 💸 ✅ Send transaction(${tx.type}) success.`);
               resolve(result);
             }
           });
         } else {
         }
-      }).catch(e => {
+      }).catch((e) => {
         reject(e);
       });
     });
@@ -238,16 +263,20 @@ export default class Chain {
   }
 
   private async listenBlocks() {
-    this.unsubscribeBlocks = await this.api.rpc.chain.subscribeNewHeads(header => {
-      this.now = header.number.toNumber();
-      emitter.emit("header", header);
-    });
+    this.unsubscribeBlocks = await this.api.rpc.chain.subscribeNewHeads(
+      (header) => {
+        this.now = header.number.toNumber();
+        emitter.emit("header", header);
+      }
+    );
   }
 
   private async listenEvents() {
     this.unsubscribeEvents = await this.api.query.system.events((events) => {
       for (const ev of events) {
-        const { event: { data, method } } = ev;
+        const {
+          event: { data, method },
+        } = ev;
         if (method === "StoreFileSubmitted") {
           const cid = hex2str(data[0].toString());
           emitter.emit("file:add", cid);
@@ -277,7 +306,9 @@ export default class Chain {
       "maxFileSize",
       "maxReportFiles",
     ];
-    const values = await Promise.all(keys.map(name => (this.api.consts.fileStorage[name] as any).toNumber()));
+    const values = await Promise.all(
+      keys.map((name) => (this.api.consts.fileStorage[name] as any).toNumber())
+    );
     this.constants = keys.reduce((acc, cur, i) => {
       acc[cur] = values[i];
       return acc;
@@ -287,8 +318,8 @@ export default class Chain {
   private async waitReady() {
     while (!(await this.waitApiReady())) {
       logger.warn("⛓  Connection broken, waiting for chain running.");
-      await sleep(config.blockSecs * 1000); 
-      return this.init(); 
+      await sleep(config.blockSecs * 1000);
+      return this.init();
     }
     while (await this.isSyncing()) {
       const header = await this.header();
@@ -297,9 +328,7 @@ export default class Chain {
       );
       await sleep(6000);
     }
-    logger.info(
-      `⛓  Chain have synced, current block number ${this.now}`
-    );
+    logger.info(`⛓  Chain have synced, current block number ${this.now}`);
   }
 
   private async header() {
@@ -311,7 +340,9 @@ export default class Chain {
   private async waitApiReady() {
     try {
       await this.api.isReadyOrError;
-      logger.info(`⚡️ Chain info: ${this.api.runtimeChain}, ${this.api.runtimeVersion.specVersion}`);
+      logger.info(
+        `⚡️ Chain info: ${this.api.runtimeChain}, ${this.api.runtimeVersion.specVersion}`
+      );
       return true;
     } catch (e) {
       logger.error(`💥 Error connecting with chain: ${e.toString()}`);
@@ -325,7 +356,7 @@ export default class Chain {
 
     if (!res) {
       const before = await this.header();
-      await sleep(config.blockSecs * 1000 / 2);
+      await sleep((config.blockSecs * 1000) / 2);
       const after = await this.header();
       if (before.number.toNumber() + 1 < after.number.toNumber()) {
         res = true;

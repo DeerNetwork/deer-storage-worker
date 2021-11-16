@@ -5,12 +5,16 @@ import Store from "./store";
 import emitter from "./emitter";
 import config from "./config";
 import { fatal, logger, sleep } from "./utils";
-import { MaxPriorityQueue, MinPriorityQueue, PriorityQueueItem } from "@datastructures-js/priority-queue";
-import { version } from "../package.json"
+import {
+  MaxPriorityQueue,
+  MinPriorityQueue,
+  PriorityQueueItem,
+} from "@datastructures-js/priority-queue";
+import { version } from "../package.json";
 
 interface Task {
-  type: "addFile" | "delFile" | "report" | "commit",
-  cid?: string,
+  type: "addFile" | "delFile" | "report" | "commit";
+  cid?: string;
 }
 
 class Engine {
@@ -51,9 +55,15 @@ class Engine {
       this.checkInterval();
     }, 60000);
     const { nextReportAt, reportedAt, nextRoundAt } = this.chain.reportState;
-    logger.info(`blockNum=${this.chain.now}, ${JSON.stringify({ reportedAt, nextReportAt, nextRoundAt })}`);
+    logger.info(
+      `blockNum=${this.chain.now}, ${JSON.stringify({
+        reportedAt,
+        nextReportAt,
+        nextRoundAt,
+      })}`
+    );
 
-    emitter.on("header", async header => {
+    emitter.on("header", async (header) => {
       try {
         const blockNum = header.number.toNumber();
         const sholdReport = await this.chain.shouldReport(blockNum);
@@ -68,15 +78,22 @@ class Engine {
           }
         }
         if (blockNum % 60 === 0) {
-          const { nextReportAt, reportedAt, nextRoundAt } = this.chain.reportState;
-          logger.info(`blockNum=${blockNum}, ${JSON.stringify({ reportedAt, nextReportAt, nextRoundAt })}`);
+          const { nextReportAt, reportedAt, nextRoundAt } =
+            this.chain.reportState;
+          logger.info(
+            `blockNum=${blockNum}, ${JSON.stringify({
+              reportedAt,
+              nextReportAt,
+              nextRoundAt,
+            })}`
+          );
           this.checkPending();
         }
       } catch (e) {
         logger.error(`💥 Caught on event header: ${e.toString()}`);
       }
     });
-    emitter.on("file:add", async cid => {
+    emitter.on("file:add", async (cid) => {
       const [maybeFileOrder, maybeStoreFile] = await Promise.all([
         this.chain.getStoreFie(cid),
         this.chain.getFileOrder(cid),
@@ -94,7 +111,7 @@ class Engine {
       logger.debug(`IpfsQueue addFile ${cid}`);
       this.ipfsQueue.enqueue(cid, this.chain.getReportInterval());
     });
-    emitter.on("file:del", async cid => {
+    emitter.on("file:del", async (cid) => {
       logger.debug(`TeaQueue delFile ${cid}`);
       this.teaQueue.enqueue({ type: "delFile", cid }, 1);
     });
@@ -119,7 +136,9 @@ class Engine {
       const system = await this.teaclave.system();
       const machine = stash.machine_id.unwrap().toString();
       if (machine !== "0x" + system.machine_id) {
-        fatal(`💥 On chain machine is ${system.machine_id}, current machind is ${machine}`);
+        fatal(
+          `💥 On chain machine is ${system.machine_id}, current machind is ${machine}`
+        );
         return false;
       }
       if (!system.enclave) {
@@ -135,7 +154,10 @@ class Engine {
         await this.registerTeaclave();
         return false;
       }
-      if (this.chain.reportState.rid && system.cursor_committed !== this.chain.reportState.rid) {
+      if (
+        this.chain.reportState.rid &&
+        system.cursor_committed !== this.chain.reportState.rid
+      ) {
         await this.teaQueue.enqueue({ type: "commit" }, 4);
       }
       this.machine = machine;
@@ -145,7 +167,9 @@ class Engine {
         logger.warn("💥 Waiting for teaclave ready");
         return false;
       }
-      if (/Invalid Transaction: Transaction has a bad signature/.test(err.message)) {
+      if (
+        /Invalid Transaction: Transaction has a bad signature/.test(err.message)
+      ) {
         fatal("💥 Fail to call tx");
         return false;
       }
@@ -171,7 +195,8 @@ class Engine {
         await sleep(2000);
         continue;
       }
-      const { element: cid } = this.ipfsQueue.dequeue() as PriorityQueueItem<string>;
+      const { element: cid } =
+        this.ipfsQueue.dequeue() as PriorityQueueItem<string>;
       this.ipfsConcurrency += 1;
       await this.addIpfsFile(cid);
     }
@@ -183,7 +208,8 @@ class Engine {
         await sleep(2000);
         continue;
       }
-      const { element: task } = this.teaQueue.dequeue() as PriorityQueueItem<Task>;
+      const { element: task } =
+        this.teaQueue.dequeue() as PriorityQueueItem<Task>;
       if (task.type === "addFile") {
         await this.addTeaFile(task.cid);
       } else if (task.type === "delFile") {
@@ -232,7 +258,8 @@ class Engine {
       }
       if (!file.isAdded) {
         const res = await this.teaclave.addFile(cid);
-        if (res) this.store.addTeaFile({ cid, fileSize: res.size, committed: false });
+        if (res)
+          this.store.addTeaFile({ cid, fileSize: res.size, committed: false });
       }
       logger.info(`✨ addTeaFile ${cid} success`);
     } catch (e) {
@@ -250,7 +277,6 @@ class Engine {
     }
   }
 
-
   private async report() {
     try {
       logger.debug("Worker trying to report works");
@@ -263,7 +289,11 @@ class Engine {
       }
       const { addFiles, settleFiles } = await this.store.getReportFiles();
       const reportData = await this.teaclave.preparePeport(addFiles);
-      const res = await this.chain.reportWork(this.machine, reportData, settleFiles);
+      const res = await this.chain.reportWork(
+        this.machine,
+        reportData,
+        settleFiles
+      );
       if (res.status === "failed") {
         fatal("Fail to report work");
       }
@@ -277,7 +307,6 @@ class Engine {
     }
     this.startingReportAt = 0;
   }
-
 
   private async commit() {
     try {
@@ -294,7 +323,7 @@ class Engine {
   private async afterCommit() {
     try {
       await this.store.checkReportCids(this.reportCids);
-    } catch { }
+    } catch {}
   }
 
   private async checkInterval() {
@@ -302,7 +331,7 @@ class Engine {
       if (this.chain.now === this.checkPoint) {
         await this.chain.init();
       }
-    } catch { }
+    } catch {}
     this.checkPoint = this.chain.now;
   }
 
@@ -316,12 +345,12 @@ class Engine {
       for (const cid of myFiles.teaFiles) {
         this.teaQueue.enqueue({ type: "addFile", cid }, 3);
       }
-    } catch { }
+    } catch {}
   }
 }
 
 const engine = new Engine();
-engine.init().catch(err => {
+engine.init().catch((err) => {
   logger.error(`💥 Caught on engine.init: ${err.toString()}`);
   process.exit(1);
 });
