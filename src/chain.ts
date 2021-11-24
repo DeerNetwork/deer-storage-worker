@@ -316,53 +316,30 @@ export default class Chain {
   }
 
   private async waitReady() {
-    while (!(await this.waitApiReady())) {
-      logger.warn("⛓  Connection broken, waiting for chain running.");
+    try {
+      await this.api.isReadyOrError;
+      logger.info(
+        `⚡️ Chain info: ${this.api.runtimeChain}, ${this.api.runtimeVersion.specVersion}`
+      );
+      while (true) {
+        const health = await this.api.rpc.system.health();
+        if (health.isSyncing.isFalse) break;
+        const header = await this.header();
+        logger.info(
+          `⛓  Chain is synchronizing, current block number ${header.number.toNumber()}`
+        );
+        await sleep(config.blockSecs * 1000);
+      }
+    } catch (err) {
+      logger.warn(`⛓  Connection broken, ${err.message}. retrying...`);
       await sleep(config.blockSecs * 1000);
       return this.init();
     }
-    while (await this.isSyncing()) {
-      const header = await this.header();
-      logger.info(
-        `⛓  Chain is synchronizing, current block number ${header.number.toNumber()}`
-      );
-      await sleep(6000);
-    }
-    logger.info(`⛓  Chain have synced, current block number ${this.now}`);
   }
 
   private async header() {
     const header = await this.api.rpc.chain.getHeader();
     this.now = header.number.toNumber();
     return header;
-  }
-
-  private async waitApiReady() {
-    try {
-      await this.api.isReadyOrError;
-      logger.info(
-        `⚡️ Chain info: ${this.api.runtimeChain}, ${this.api.runtimeVersion.specVersion}`
-      );
-      return true;
-    } catch (e) {
-      logger.error(`💥 Error connecting with chain: ${e.toString()}`);
-      return false;
-    }
-  }
-
-  private async isSyncing() {
-    const health = await this.api.rpc.system.health();
-    let res = health.isSyncing.isTrue;
-
-    if (!res) {
-      const before = await this.header();
-      await sleep((config.blockSecs * 1000) / 2);
-      const after = await this.header();
-      if (before.number.toNumber() + 1 < after.number.toNumber()) {
-        res = true;
-      }
-    }
-
-    return res;
   }
 }
