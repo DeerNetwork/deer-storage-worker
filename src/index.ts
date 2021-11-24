@@ -128,12 +128,12 @@ class Engine {
         return false;
       }
       const stash = maybeStash.unwrap();
-      if (stash.machine_id.isNone) {
+      if (stash.machineId.isNone) {
         await this.registerTeaclave();
         return false;
       }
       const system = await this.teaclave.system();
-      const machine = stash.machine_id.unwrap().toString();
+      const machine = stash.machineId.unwrap().toString();
       if (machine !== "0x" + system.machine_id) {
         fatal(
           `💥 On chain machine is ${system.machine_id}, current machind is ${machine}`

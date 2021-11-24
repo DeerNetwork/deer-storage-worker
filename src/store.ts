@@ -2,9 +2,9 @@ import { Ipfs } from "./ipfs";
 import Chain from "./chain";
 import Teaclave, { TeaFile } from "./teaclave";
 import {
-  FileOrder,
-  StoreFile,
-} from "@deernetwork/type-definitions/dist/interfaces/fileStorage";
+  PalletStorageFileOrder,
+  PalletStorageStoreFile,
+} from "@polkadot/types/lookup";
 import { logger } from "./utils";
 import config from "./config";
 
@@ -173,18 +173,18 @@ export default class Store {
     }
   }
 
-  public addStoreFile(cid: string, storeFile: StoreFile) {
+  public addStoreFile(cid: string, storeFile: PalletStorageStoreFile) {
     const file = this.files.get(cid) || this.defaultFile();
     file.reserved = storeFile.reserved.toBigInt();
-    if (!file.fileSize) file.fileSize = storeFile.file_size.toNumber();
+    if (!file.fileSize) file.fileSize = storeFile.fileSize.toNumber();
     this.files.set(cid, file);
   }
 
-  public addFileOrder(cid: string, fileOrder: FileOrder) {
+  public addFileOrder(cid: string, fileOrder: PalletStorageFileOrder) {
     if (this.files.has(cid)) {
       const file = this.files.get(cid);
-      file.fileSize = fileOrder.file_size.toNumber();
-      file.expireAt = fileOrder.expire_at.toNumber();
+      file.fileSize = fileOrder.fileSize.toNumber();
+      file.expireAt = fileOrder.expireAt.toNumber();
       file.countReplicas = fileOrder.replicas.length;
       file.reported = !!fileOrder.replicas.find((v) =>
         v.eq(this.chain.address)

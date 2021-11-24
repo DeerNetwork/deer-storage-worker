@@ -81,7 +81,7 @@ export default class Chain {
     const currentRoundAt = nextRoundAtN.sub(new BN(roundDuration)).toNumber();
     const nextRoundAt = nextRoundAtN.toNumber();
     const node = maybeNode.unwrapOrDefault();
-    const reportedAt = node.reported_at.toNumber();
+    const reportedAt = node.reportedAt.toNumber();
     let nextReportAt = this.reportState?.nextReportAt || 0;
     const sanitizeNextReportAt = (value) =>
       value > nextRoundAt + roundDuration - 5
