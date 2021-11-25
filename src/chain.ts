@@ -246,7 +246,10 @@ export default class Chain {
 
   private async stop() {
     if (this?.api?.disconnect) {
-      await this.api.disconnect();
+      try {
+        await this.api.disconnect();
+      } catch {}
+      logger.info(`Chain is disconnected`);
     }
     if (this.unsubscribeEvents) {
       this.unsubscribeEvents();

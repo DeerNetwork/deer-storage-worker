@@ -42,10 +42,10 @@
   dependencies:
     "@datastructures-js/heap" "^3.2.0"
 
-"@deernetwork/type-definitions@^0.2.6":
-  version "0.2.6"
-  resolved "https://registry.yarnpkg.com/@deernetwork/type-definitions/-/type-definitions-0.2.6.tgz#a4b7fab271af8f4e9930bd99c2e13d82ad7fcd97"
-  integrity sha512-1Kn8aKEsq9tzxvxOe/8RnjTTQWb41o4uehqQjNJjBt8z/5kyppQ4N1HX+XMJ8RFrFUey13ohb9XeCefXineysw==
+"@deernetwork/type-definitions@^0.3.0":
+  version "0.3.0"
+  resolved "https://registry.yarnpkg.com/@deernetwork/type-definitions/-/type-definitions-0.3.0.tgz#41128411c3c9d5c52c5d6654a22d9c868d128c9f"
+  integrity sha512-/1+/W0HhbhijjohZI0BYalJdE7OwncTYVFrvvs8nDqbRnu7zM2f3bAOqhD9npsu2M9fzfrzpzVZJnCcsrjCnMQ==
 
 "@eslint/eslintrc@^1.0.4":
   version "1.0.4"
@@ -125,7 +125,7 @@
     "@polkadot/util-crypto" "^7.9.2"
     rxjs "^7.4.0"
 
-"@polkadot/api@6.9.2", "@polkadot/api@^6.9.1":
+"@polkadot/api@6.9.2", "@polkadot/api@^6.9.2":
   version "6.9.2"
   resolved "https://registry.yarnpkg.com/@polkadot/api/-/api-6.9.2.tgz#0cd394b3e7cb14db25465f4e131c038d69ba021c"
   integrity sha512-VlKW2Y0zcJhH0Y9/vNRkYIokMaXr/QQ9fZdHKP6z6slhTOfPQYr09msuBSXNyj0X1VGXR6pAXyjsu/gnMIpPrg==
