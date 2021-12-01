@@ -1,6 +1,18 @@
-import axios, { AxiosInstance, AxiosResponse } from "axios";
-import config from "./config";
-import { logger } from "./utils";
+import { ServiceOption, InitOption, createInitFn } from "use-services";
+import axios, {
+  AxiosInstance,
+  AxiosRequestHeaders,
+  AxiosResponse,
+} from "axios";
+import { srvs } from "./services";
+
+export type Option<S extends Service> = ServiceOption<Args, S>;
+
+export interface Args {
+  baseURL: string;
+  timeout: number;
+  headers: AxiosRequestHeaders;
+}
 
 export interface SystemRes {
   cursor_committed: number;
@@ -32,11 +44,16 @@ export interface TeaFile {
   fileSize: number;
   committed: boolean;
 }
-export default class Teaclave {
+
+export class Service {
+  private args: Args;
   private readonly api: AxiosInstance;
-  constructor() {
+  public constructor(option: InitOption<Args, Service>) {
+    this.args = option.args;
     this.api = axios.create({
-      ...config.teaclave,
+      baseURL: this.args.baseURL,
+      timeout: this.args.timeout,
+      headers: this.args.headers,
       validateStatus: () => true,
     });
   }
@@ -94,9 +111,7 @@ export default class Teaclave {
   ): Promise<T> {
     try {
       const res = await rpc();
-      logger.debug(
-        `⚡️ teaclave.${name}, response: ${JSON.stringify(res.data)}`
-      );
+      srvs.logger.debug(`teaclave.${name} got ${JSON.stringify(res.data)}`);
       if (res.status == 200) {
         return res.data;
       }
@@ -106,3 +121,5 @@ export default class Teaclave {
     }
   }
 }
+
+export const init = createInitFn(Service);

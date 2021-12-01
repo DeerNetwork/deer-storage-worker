@@ -1,12 +1,16 @@
-import { Ipfs } from "./ipfs";
-import Chain from "./chain";
-import Teaclave, { TeaFile } from "./teaclave";
+import { ServiceOption, InitOption, createInitFn } from "use-services";
 import {
   PalletStorageFileOrder,
   PalletStorageStoreFile,
 } from "@polkadot/types/lookup";
-import { logger } from "./utils";
-import config from "./config";
+import { TeaFile } from "./teaclave";
+import { srvs } from "./services";
+
+export type Option<S extends Service> = ServiceOption<Args, S>;
+
+export interface Args {
+  maxRetries: number;
+}
 
 export interface File {
   reserved?: BigInt;
@@ -20,31 +24,29 @@ export interface File {
   isCommitted?: boolean;
 }
 
-export default class Store {
+export class Service {
   public files: Map<string, File> = new Map();
 
-  private chain: Chain;
-  private ipfs: Ipfs;
-  private teaclave: Teaclave;
+  private args: Args;
 
-  public async init(chain: Chain, ipfs: Ipfs, teaclave: Teaclave) {
-    this.chain = chain;
-    this.ipfs = ipfs;
-    this.teaclave = teaclave;
+  public constructor(option: InitOption<Args, Service>) {
+    this.args = option.args;
+  }
 
-    const storeFiles = await this.chain.listStoreFiles();
+  public async run() {
+    const storeFiles = await srvs.chain.listStoreFiles();
     for (const { cid, storeFile } of storeFiles) {
       this.addStoreFile(cid, storeFile);
     }
-    const fileOrders = await this.chain.listFileOrders();
+    const fileOrders = await srvs.chain.listFileOrders();
     for (const { cid, fileOrder } of fileOrders) {
       this.addFileOrder(cid, fileOrder);
     }
-    const cids = await this.ipfs.pinList();
+    const cids = await srvs.ipfs.pinList();
     for (const cid of cids) {
       this.addPin(cid);
     }
-    const teaFiles = await this.teaclave.inspectFiles();
+    const teaFiles = await srvs.teaclave.inspectFiles();
     for (const teaFile of teaFiles) {
       this.addTeaFile(teaFile);
     }
@@ -62,10 +64,10 @@ export default class Store {
     if (!file) return;
     if (!this.isFileDirty(file)) return;
     if (file.isPinned) {
-      await this.ipfs.pinRemove(cid);
+      await srvs.ipfs.pinRemove(cid);
     }
     if (file.isAdded) {
-      await this.teaclave.delFile(cid);
+      await srvs.teaclave.delFile(cid);
     }
     this.files.delete(cid);
   }
@@ -84,7 +86,7 @@ export default class Store {
     }
     await Promise.all(
       toCheckCids.map(async (cid) => {
-        const maybeFileOrder = await this.chain.getFileOrder(cid);
+        const maybeFileOrder = await srvs.chain.getFileOrder(cid);
         if (maybeFileOrder.isSome) {
           this.addFileOrder(cid, maybeFileOrder.unwrap());
         }
@@ -125,10 +127,10 @@ export default class Store {
     const file = this.getFile(cid);
     if (!file) this.files.set(cid, this.defaultFile());
     try {
-      const maybeStoreFile = await this.chain.getStoreFie(cid);
+      const maybeStoreFile = await srvs.chain.getStoreFie(cid);
       if (maybeStoreFile.isSome) {
         this.addStoreFile(cid, maybeStoreFile.unwrap());
-        const maybeFileOrder = await this.chain.getFileOrder(cid);
+        const maybeFileOrder = await srvs.chain.getFileOrder(cid);
         if (maybeFileOrder.isSome) {
           this.addFileOrder(cid, maybeFileOrder.unwrap());
         } else {
@@ -139,15 +141,15 @@ export default class Store {
         file.reserved = BigInt(0);
         file.expireAt = 0;
       }
-      file.isPinned = await this.ipfs.pinCheck(cid);
-      const teaFile = await this.teaclave.checkFile(cid);
+      file.isPinned = await srvs.ipfs.pinCheck(cid);
+      const teaFile = await srvs.teaclave.checkFile(cid);
       if (teaFile) {
         this.addTeaFile(teaFile);
       } else {
         file.isAdded = false;
       }
     } catch (err) {
-      logger.warn(`Fail to check delete cid ${cid}`);
+      srvs.logger.warn(`Fail to check delete cid ${cid}`);
     }
   }
 
@@ -161,14 +163,14 @@ export default class Store {
   public async checkReportCids(cids: string[]) {
     for (const cid of cids) {
       try {
-        const maybeFileOrder = await this.chain.getFileOrder(cid);
+        const maybeFileOrder = await srvs.chain.getFileOrder(cid);
         if (maybeFileOrder.isSome) {
           this.addFileOrder(cid, maybeFileOrder.unwrap());
         }
-        const teaFile = await this.teaclave.checkFile(cid);
+        const teaFile = await srvs.teaclave.checkFile(cid);
         this.addTeaFile(teaFile);
       } catch (err) {
-        logger.warn(`Fail to check report cid ${cid}`);
+        srvs.logger.warn(`Fail to check report cid ${cid}`);
       }
     }
   }
@@ -187,7 +189,7 @@ export default class Store {
       file.expireAt = fileOrder.expireAt.toNumber();
       file.countReplicas = fileOrder.replicas.length;
       file.reported = !!fileOrder.replicas.find((v) =>
-        v.eq(this.chain.address)
+        v.eq(srvs.chain.address)
       );
     }
   }
@@ -219,14 +221,14 @@ export default class Store {
   }
 
   private isFileCanReportSettle(file: File) {
-    return file.isCommitted && file.expireAt <= this.chain.now;
+    return file.isCommitted && file.expireAt <= srvs.chain.now;
   }
 
   private isFilePendingIpfs(file: File) {
     return (
       this.isFileWorth(file) &&
       !file.isPinned &&
-      file.countIpfsFails < config.ipfs.maxRetries
+      file.countIpfsFails < this.args.maxRetries
     );
   }
 
@@ -237,15 +239,15 @@ export default class Store {
   private isFileWorth(file: File) {
     return (
       !file.reported &&
-      (file.countReplicas || 0) < this.chain.constants.maxFileReplicas
+      (file.countReplicas || 0) < srvs.chain.constants.maxFileReplicas
     );
   }
 
   private isFileDirty(file: File) {
     return (
-      (file.reserved === BigInt(0) && file.expireAt < this.chain.now) ||
+      (file.reserved === BigInt(0) && file.expireAt < srvs.chain.now) ||
       (!file.reported &&
-        file.countReplicas >= this.chain.constants.maxFileReplicas)
+        file.countReplicas >= srvs.chain.constants.maxFileReplicas)
     );
   }
 
@@ -259,3 +261,5 @@ export default class Store {
     };
   }
 }
+
+export const init = createInitFn(Service);

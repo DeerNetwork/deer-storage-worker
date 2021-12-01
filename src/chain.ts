@@ -1,16 +1,30 @@
+import {
+  ServiceOption,
+  InitOption,
+  INIT_KEY,
+  STOP_KEY,
+  createInitFn,
+} from "use-services";
 import { ApiPromise, WsProvider } from "@polkadot/api";
 import { typesBundleForPolkadot } from "@deernetwork/type-definitions";
 import { SubmittableExtrinsic } from "@polkadot/api/promise/types";
 import { DispatchError } from "@polkadot/types/interfaces";
+import * as _ from "lodash";
 import { ITuple } from "@polkadot/types/types";
-import * as BN from "bn.js";
-import config from "./config";
-import { logger, sleep, hex2str, formatHexArr } from "./utils";
-import emitter from "./emitter";
-import { AttestRes, PrepareReportRes } from "./teaclave";
 import { Keyring } from "@polkadot/keyring";
 import { KeyringPair } from "@polkadot/keyring/types";
-import * as _ from "lodash";
+import * as BN from "bn.js";
+import { sleep, hex2str, formatHexArr } from "./utils";
+import { AttestRes, PrepareReportRes } from "./teaclave";
+import { srvs, emitter } from "./services";
+
+export type Option<S extends Service> = ServiceOption<Args, S>;
+
+export interface Args {
+  url: string;
+  secret: string;
+  blockSecs: number;
+}
 
 export interface ChainConstants {
   roundDuration: number;
@@ -33,26 +47,47 @@ export interface TxRes {
   message?: string;
   details?: string;
 }
-export default class Chain {
+
+export class Service {
   public constants: ChainConstants;
+  public blockSecs: number;
   public keyPair: KeyringPair;
   public reportState: ReportState;
   public now = 0;
 
+  private args: Args;
   private api: ApiPromise;
   private unsubscribeEvents: () => void;
   private unsubscribeBlocks: () => void;
+  public constructor(option: InitOption<Args, Service>) {
+    this.args = option.args;
+    this.blockSecs = this.args.blockSecs;
+  }
 
-  public async init() {
-    await this.stop();
-    const chainConfig = config.chain;
+  public async [INIT_KEY]() {
+    await this[STOP_KEY]();
     this.api = new ApiPromise({
-      provider: new WsProvider(chainConfig.endpoint),
+      provider: new WsProvider(this.args.url),
       typesBundle: typesBundleForPolkadot,
     });
     await this.waitReady();
     await this.initAccount();
     Promise.all([await this.syncConstants(), await this.getReportState()]);
+  }
+
+  private async [STOP_KEY]() {
+    if (this?.api?.disconnect) {
+      try {
+        await this.api.disconnect();
+      } catch {}
+      srvs.logger.info(`Chain is disconnected`);
+    }
+    if (this.unsubscribeEvents) {
+      this.unsubscribeEvents();
+    }
+    if (this.unsubscribeBlocks) {
+      this.unsubscribeBlocks();
+    }
   }
 
   public get address() {
@@ -159,7 +194,7 @@ export default class Chain {
     data: PrepareReportRes,
     settleFiles: string[]
   ) {
-    logger.debug(
+    srvs.logger.debug(
       `Report works with args: ${machine} ${JSON.stringify(
         data
       )}, ${JSON.stringify(settleFiles)}`
@@ -195,7 +230,7 @@ export default class Chain {
   private sendTx(tx: SubmittableExtrinsic): Promise<TxRes> {
     return new Promise((resolve, reject) => {
       tx.signAndSend(this.keyPair, ({ events = [], status }) => {
-        logger.info(
+        srvs.logger.info(
           `  ↪ 💸 Transaction status: ${status.type}, nonce: ${tx.nonce}`
         );
 
@@ -223,7 +258,7 @@ export default class Chain {
                 result.details = error.docs.join("");
               }
 
-              logger.info(
+              srvs.logger.info(
                 `  ↪ 💸 ❌ Send transaction(${tx.type}) failed with ${result.message}.`
               );
               resolve(result);
@@ -232,7 +267,9 @@ export default class Chain {
                 status: "success",
               };
 
-              logger.info(`  ↪ 💸 ✅ Send transaction(${tx.type}) success.`);
+              srvs.logger.info(
+                `  ↪ 💸 ✅ Send transaction(${tx.type}) success.`
+              );
               resolve(result);
             }
           });
@@ -244,25 +281,10 @@ export default class Chain {
     });
   }
 
-  private async stop() {
-    if (this?.api?.disconnect) {
-      try {
-        await this.api.disconnect();
-      } catch {}
-      logger.info(`Chain is disconnected`);
-    }
-    if (this.unsubscribeEvents) {
-      this.unsubscribeEvents();
-    }
-    if (this.unsubscribeBlocks) {
-      this.unsubscribeBlocks();
-    }
-  }
-
   private initAccount() {
     if (this.keyPair) return;
     const keyring = new Keyring({ type: "sr25519" });
-    this.keyPair = keyring.createFromUri(config.mnemonic);
+    this.keyPair = keyring.createFromUri(this.args.secret);
   }
 
   private async listenBlocks() {
@@ -321,22 +343,22 @@ export default class Chain {
   private async waitReady() {
     try {
       await this.api.isReadyOrError;
-      logger.info(
+      srvs.logger.info(
         `⚡️ Chain info: ${this.api.runtimeChain}, ${this.api.runtimeVersion.specVersion}`
       );
       while (true) {
         const health = await this.api.rpc.system.health();
         if (health.isSyncing.isFalse) break;
         const header = await this.header();
-        logger.info(
+        srvs.logger.info(
           `⛓  Chain is synchronizing, current block number ${header.number.toNumber()}`
         );
-        await sleep(config.blockSecs * 1000);
+        await sleep(this.args.blockSecs * 1000);
       }
     } catch (err) {
-      logger.warn(`⛓  Connection broken, ${err.message}. retrying...`);
-      await sleep(config.blockSecs * 1000);
-      return this.init();
+      srvs.logger.warn(`⛓  Connection broken, ${err.message}. retrying...`);
+      await sleep(this.args.blockSecs * 1000);
+      return this[INIT_KEY]();
     }
   }
 
@@ -346,3 +368,5 @@ export default class Chain {
     return header;
   }
 }
+
+export const init = createInitFn(Service);
