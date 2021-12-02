@@ -30,53 +30,34 @@ export class Service {
   public async run() {
     this.ipfsQueue = new MaxPriorityQueue();
     this.teaQueue = new MaxPriorityQueue();
-    srvs.logger.info(`Controller Account is ${srvs.chain.address}`);
     let isTeaclaveOk = false;
     do {
       isTeaclaveOk = await this.initTeaclave();
       if (!isTeaclaveOk) await sleep(3 * srvs.chain.blockSecs * 1000);
     } while (!isTeaclaveOk);
-    srvs.chain.listen();
+
     srvs.store.run();
     this.runIpfsQueue();
     this.runTeaQueue();
-    const { nextReportAt, reportedAt, nextRoundAt } = srvs.chain.reportState;
-    srvs.logger.info(
-      `blockNum=${srvs.chain.now}, ${JSON.stringify({
-        reportedAt,
-        nextReportAt,
-        nextRoundAt,
-      })}`
-    );
 
-    emitter.on("header", async (header) => {
+    emitter.on("header", async () => {
       try {
-        const blockNum = header.number.toNumber();
-        const sholdReport = await srvs.chain.shouldReport(blockNum);
-        if (sholdReport) {
+        const { shouldReport, latestBlockNum } = srvs.chain;
+        if (shouldReport) {
           if (this.startingReportAt > 0) {
-            if (blockNum - this.startingReportAt > 60) {
+            if (latestBlockNum - this.startingReportAt > 60) {
               this.startingReportAt = 0;
             }
           } else {
-            this.startingReportAt = blockNum;
+            this.startingReportAt = latestBlockNum;
             this.teaQueue.enqueue({ type: "report" }, 4);
           }
         }
-        if (blockNum % 60 === 0) {
-          const { nextReportAt, reportedAt, nextRoundAt } =
-            srvs.chain.reportState;
-          srvs.logger.info(
-            `blockNum=${blockNum}, ${JSON.stringify({
-              reportedAt,
-              nextReportAt,
-              nextRoundAt,
-            })}`
-          );
+        if (latestBlockNum % 60 === 0) {
           this.checkPending();
         }
       } catch (e) {
-        srvs.logger.error(`💥 Caught on event header: ${e.toString()}`);
+        srvs.logger.error(`Caught on event header, ${e.toString()}`);
       }
     });
     emitter.on("file:add", async (cid) => {
@@ -95,7 +76,7 @@ export class Service {
         return;
       }
       srvs.logger.debug(`IpfsQueue addFile ${cid}`);
-      this.ipfsQueue.enqueue(cid, srvs.chain.getReportInterval());
+      this.ipfsQueue.enqueue(cid, srvs.chain.numBlocksBeforeReport());
     });
     emitter.on("file:del", async (cid) => {
       srvs.logger.debug(`TeaQueue delFile ${cid}`);
@@ -111,7 +92,7 @@ export class Service {
     try {
       const maybeStash = await srvs.chain.getStash();
       if (maybeStash.isNone) {
-        srvs.logger.warn("💥 Account is not stashed");
+        srvs.logger.warn("Account have not been stashed");
         return false;
       }
       const stash = maybeStash.unwrap();
@@ -124,7 +105,7 @@ export class Service {
       if (machine !== "0x" + system.machine_id) {
         emitter.emit(
           "fatal",
-          `💥 On chain machine is ${system.machine_id}, current machind is ${machine}`
+          `Differect machin detected, onchain expect ${system.machine_id}, current ${machine}`
         );
         return false;
       }
@@ -151,16 +132,16 @@ export class Service {
       return true;
     } catch (err) {
       if (/teaclave.attest: connect ECONNREFUSED/.test(err.message)) {
-        srvs.logger.warn("💥 Waiting for teaclave ready");
+        srvs.logger.warn("Waiting for teaclave ready");
         return false;
       }
       if (
         /Invalid Transaction: Transaction has a bad signature/.test(err.message)
       ) {
-        emitter.emit("fatal", "💥 Fail to call tx");
+        emitter.emit("fatal", "Fail to call tx");
         return false;
       }
-      srvs.logger.error(`💥 Fail to init teaclave, ${err.toString()}`);
+      srvs.logger.error(`Fail to init teaclave, ${err.toString()}`);
       return false;
     }
   }
@@ -168,12 +149,13 @@ export class Service {
   private async registerTeaclave() {
     const attest = await srvs.teaclave.attest();
     if (!attest) return;
-    const res = await srvs.chain.register(attest);
-    if (res.status === "failed") {
-      emitter.emit("fatal", "Fail to register node");
+    try {
+      await srvs.chain.register(attest);
+    } catch (err) {
+      srvs.logger.error(`Fail to register node, ${err.message}`);
       return;
     }
-    srvs.logger.info("✨ Register node successed");
+    srvs.logger.info("Register node successful");
   }
 
   private async runIpfsQueue() {
@@ -227,10 +209,10 @@ export class Service {
         srvs.store.addPin(cid);
       }
       this.teaQueue.enqueue({ type: "addFile", cid }, 3);
-      srvs.logger.info(`✨ AddIpfsFile ${cid} success`);
+      srvs.logger.info(`AddIpfsFile ${cid} success`);
     } catch (e) {
       srvs.store.markFileIpfsFail(cid);
-      srvs.logger.error(`💥 Fail to add ipfs file ${cid}, ${e.toString()}`);
+      srvs.logger.error(`Fail to add ipfs file ${cid}, ${e.toString()}`);
     }
     this.ipfsConcurrency -= 1;
   }
@@ -248,9 +230,9 @@ export class Service {
         if (res)
           srvs.store.addTeaFile({ cid, fileSize: res.size, committed: false });
       }
-      srvs.logger.info(`✨ addTeaFile ${cid} success`);
+      srvs.logger.info(`Call addTeaFile ${cid} success`);
     } catch (e) {
-      srvs.logger.error(`💥 Fail to add file ${cid}, ${e.toString()}`);
+      srvs.logger.error(`Fail to add file ${cid}, ${e.toString()}`);
     }
   }
 
@@ -260,15 +242,15 @@ export class Service {
       await srvs.store.checkDeleteCid(cid);
       await srvs.store.deleteDirtyFile(cid);
     } catch (e) {
-      srvs.logger.error(`💥 Fail to del file ${cid}, ${e.toString()}`);
+      srvs.logger.error(`Fail to del file ${cid}, ${e.toString()}`);
     }
   }
 
   private async report() {
     try {
       srvs.logger.debug("Worker trying to report works");
-      const { reported, rid } = await srvs.chain.getReportState();
-      if (reported) return;
+      const { roundReported, rid } = srvs.chain.reportState;
+      if (roundReported) return;
       const system = await srvs.teaclave.system();
       if (system.cursor_committed < rid) {
         srvs.logger.debug("Worker trying to commit miss report");
@@ -276,21 +258,19 @@ export class Service {
       }
       const { addFiles, settleFiles } = await srvs.store.getReportFiles();
       const reportData = await srvs.teaclave.preparePeport(addFiles);
-      const res = await srvs.chain.reportWork(
-        this.machine,
-        reportData,
-        settleFiles
-      );
-      if (res.status === "failed") {
+      try {
+        await srvs.chain.reportWork(this.machine, reportData, settleFiles);
+      } catch (err) {
+        srvs.logger.error(`Fail to report work, ${err.message}`);
         emitter.emit("fatal", "Fail to report work");
       }
       this.reportCids = [
         ...addFiles.slice(0, srvs.chain.constants.maxReportFiles),
         ...settleFiles.slice(0, srvs.chain.constants.maxReportFiles),
       ];
-      srvs.logger.info("✨ Report node successed");
+      srvs.logger.info("Report successed");
     } catch (e) {
-      srvs.logger.error(`💥 Fail to report ${e.toString()}`);
+      srvs.logger.error(`Fail to report ${e.toString()}`);
     }
     this.startingReportAt = 0;
   }
@@ -298,12 +278,12 @@ export class Service {
   private async commit() {
     try {
       srvs.logger.debug("Worker trying to commit report");
-      const { rid } = await srvs.chain.getReportState();
+      const { rid } = srvs.chain.reportState;
       await srvs.teaclave.commitReport(rid);
       this.afterCommit();
-      srvs.logger.info("✨ Commit report successed");
+      srvs.logger.info("Teaclave commit success");
     } catch (e) {
-      srvs.logger.error(`💥 Fail to commit report ${e.toString()}`);
+      srvs.logger.error(`Fail to commit report, ${e.toString()}`);
     }
   }
 

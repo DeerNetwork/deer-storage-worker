@@ -189,7 +189,7 @@ export class Service {
       file.expireAt = fileOrder.expireAt.toNumber();
       file.countReplicas = fileOrder.replicas.length;
       file.reported = !!fileOrder.replicas.find((v) =>
-        v.eq(srvs.chain.address)
+        v.eq(srvs.chain.walletAddress)
       );
     }
   }
@@ -221,7 +221,7 @@ export class Service {
   }
 
   private isFileCanReportSettle(file: File) {
-    return file.isCommitted && file.expireAt <= srvs.chain.now;
+    return file.isCommitted && file.expireAt <= srvs.chain.latestBlockNum;
   }
 
   private isFilePendingIpfs(file: File) {
@@ -245,7 +245,8 @@ export class Service {
 
   private isFileDirty(file: File) {
     return (
-      (file.reserved === BigInt(0) && file.expireAt < srvs.chain.now) ||
+      (file.reserved === BigInt(0) &&
+        file.expireAt < srvs.chain.latestBlockNum) ||
       (!file.reported &&
         file.countReplicas >= srvs.chain.constants.maxFileReplicas)
     );

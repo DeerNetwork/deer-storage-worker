@@ -13,10 +13,10 @@ import * as _ from "lodash";
 import { ITuple } from "@polkadot/types/types";
 import { Keyring } from "@polkadot/keyring";
 import { KeyringPair } from "@polkadot/keyring/types";
-import * as BN from "bn.js";
 import { sleep, hex2str, formatHexArr } from "./utils";
 import { AttestRes, PrepareReportRes } from "./teaclave";
 import { srvs, emitter } from "./services";
+import { cryptoWaitReady } from "@polkadot/util-crypto";
 
 export type Option<S extends Service> = ServiceOption<Args, S>;
 
@@ -35,11 +35,11 @@ export interface ChainConstants {
 }
 
 export interface ReportState {
-  reported: boolean;
   rid: number;
-  nextReportAt: number;
-  reportedAt: number;
   nextRoundAt: number;
+  reportedAt: number;
+  roundReported: boolean;
+  planReportAt: number;
 }
 
 export interface TxRes {
@@ -50,53 +50,46 @@ export interface TxRes {
 
 export class Service {
   public constants: ChainConstants;
+  public walletAddress: string;
   public blockSecs: number;
-  public keyPair: KeyringPair;
+  public latestBlockNum = 0;
   public reportState: ReportState;
-  public now = 0;
+  public shouldReport = false;
 
   private args: Args;
+  private provider: WsProvider;
   private api: ApiPromise;
-  private unsubscribeEvents: () => void;
-  private unsubscribeBlocks: () => void;
+  private wallet: KeyringPair;
   public constructor(option: InitOption<Args, Service>) {
     this.args = option.args;
     this.blockSecs = this.args.blockSecs;
   }
 
   public async [INIT_KEY]() {
-    await this[STOP_KEY]();
+    this.provider = new WsProvider(this.args.url);
     this.api = new ApiPromise({
-      provider: new WsProvider(this.args.url),
+      provider: this.provider,
       typesBundle: typesBundleForPolkadot,
     });
-    await this.waitReady();
-    await this.initAccount();
-    Promise.all([await this.syncConstants(), await this.getReportState()]);
+    await Promise.all([this.waitSynced(), cryptoWaitReady()]);
+    const keyring = new Keyring({ type: "sr25519" });
+    this.wallet = keyring.createFromUri(this.args.secret);
+    this.walletAddress = this.api
+      .createType("AccountId", this.wallet.address)
+      .toString();
+    srvs.logger.info(`Wallet address: ${this.walletAddress}`);
+
+    Promise.all([await this.syncConstants(), await this.updateReportState()]);
+
+    this.listenBlocks();
+    this.listenEvents();
   }
 
-  private async [STOP_KEY]() {
+  public async [STOP_KEY]() {
     if (this?.api?.disconnect) {
-      try {
-        await this.api.disconnect();
-      } catch {}
-      srvs.logger.info(`Chain is disconnected`);
+      await this.api.disconnect();
     }
-    if (this.unsubscribeEvents) {
-      this.unsubscribeEvents();
-    }
-    if (this.unsubscribeBlocks) {
-      this.unsubscribeBlocks();
-    }
-  }
-
-  public get address() {
-    return this.api.createType("AccountId", this.keyPair.address).toString();
-  }
-
-  public async listen() {
-    await this.listenBlocks();
-    await this.listenEvents();
+    srvs.logger.info(`Chain is disconnected`);
   }
 
   public async getFileOrder(cid: string) {
@@ -107,71 +100,12 @@ export class Service {
     return this.api.query.fileStorage.storeFiles(cid);
   }
 
-  public async getReportState(): Promise<ReportState> {
-    const [maybeNode, nextRoundAtN] = await Promise.all([
-      this.api.query.fileStorage.nodes(this.address),
-      this.api.query.fileStorage.nextRoundAt(),
-    ]);
-    const { roundDuration } = this.constants;
-    const currentRoundAt = nextRoundAtN.sub(new BN(roundDuration)).toNumber();
-    const nextRoundAt = nextRoundAtN.toNumber();
-    const node = maybeNode.unwrapOrDefault();
-    const reportedAt = node.reportedAt.toNumber();
-    let nextReportAt = this.reportState?.nextReportAt || 0;
-    const sanitizeNextReportAt = (value) =>
-      value > nextRoundAt + roundDuration - 5
-        ? _.random(roundDuration, nextRoundAt + roundDuration - 5)
-        : value;
-    if (maybeNode.isNone) {
-      nextReportAt = this.now + _.random(10, 20);
-    } else {
-      if (nextReportAt <= currentRoundAt && reportedAt < currentRoundAt) {
-        nextReportAt = Math.min(this.now + _.random(10, 20), nextRoundAt - 5);
-      } else if (
-        nextReportAt <= currentRoundAt &&
-        reportedAt >= currentRoundAt
-      ) {
-        nextReportAt = sanitizeNextReportAt(reportedAt + roundDuration);
-      } else if (
-        currentRoundAt < nextReportAt &&
-        nextReportAt < nextRoundAt &&
-        reportedAt < currentRoundAt
-      ) {
-      } else if (
-        currentRoundAt < nextReportAt &&
-        nextReportAt < nextRoundAt &&
-        reportedAt >= currentRoundAt
-      ) {
-        nextReportAt = sanitizeNextReportAt(nextReportAt + roundDuration);
-      } else {
-      }
-    }
-    this.reportState = {
-      reportedAt,
-      nextReportAt,
-      reported: reportedAt > 0 && reportedAt >= currentRoundAt,
-      rid: node.rid.toNumber(),
-      nextRoundAt: nextRoundAt,
-    };
-    return this.reportState;
-  }
-
-  public async shouldReport(now: number) {
-    if (now % (this.constants.roundDuration / 10) === 0) {
-      this.getReportState();
-    }
-    if (!this.reportState.reported) {
-      return this.now >= this.reportState.nextReportAt;
-    }
-    return false;
-  }
-
-  public getReportInterval() {
-    return this.reportState.nextReportAt - this.now;
+  public numBlocksBeforeReport() {
+    return this.reportState.planReportAt - this.latestBlockNum;
   }
 
   public async getStash() {
-    return await this.api.query.fileStorage.stashs(this.address);
+    return await this.api.query.fileStorage.stashs(this.walletAddress);
   }
 
   public async getRegister(machine: string) {
@@ -195,7 +129,7 @@ export class Service {
     settleFiles: string[]
   ) {
     srvs.logger.debug(
-      `Report works with args: ${machine} ${JSON.stringify(
+      `Report works with args: ${machine}, ${JSON.stringify(
         data
       )}, ${JSON.stringify(settleFiles)}`
     );
@@ -227,16 +161,16 @@ export class Service {
     }));
   }
 
-  private sendTx(tx: SubmittableExtrinsic): Promise<TxRes> {
+  private sendTx(tx: SubmittableExtrinsic): Promise<void> {
     return new Promise((resolve, reject) => {
-      tx.signAndSend(this.keyPair, ({ events = [], status }) => {
-        srvs.logger.info(
-          `  ↪ 💸 Transaction status: ${status.type}, nonce: ${tx.nonce}`
-        );
-
+      if (!this.provider.isConnected) {
+        reject(new Error(`Chain is disconnected`));
+        return;
+      }
+      tx.signAndSend(this.wallet, ({ events = [], status }) => {
         if (status.isInvalid || status.isDropped || status.isUsurped) {
-          reject(new Error(`${status.type} transaction.`));
-        } else {
+          reject(new Error(`${status.type} transaction`));
+          return;
         }
 
         if (status.isInBlock) {
@@ -245,35 +179,23 @@ export class Service {
               const [dispatchError] = data as unknown as ITuple<
                 [DispatchError]
               >;
-              const result: TxRes = {
-                status: "failed",
-                message: dispatchError.type,
-              };
               if (dispatchError.isModule) {
                 const mod = dispatchError.asModule;
                 const error = this.api.registry.findMetaError(
                   new Uint8Array([mod.index.toNumber(), mod.error.toNumber()])
                 );
-                result.message = `${error.section}.${error.name}`;
-                result.details = error.docs.join("");
+                throw new Error(
+                  `Transaction throw ${error.section}.${
+                    error.name
+                  }, ${error.docs.join("")}`
+                );
+              } else {
+                throw new Error(`Transaction throw ${dispatchError.type}`);
               }
-
-              srvs.logger.info(
-                `  ↪ 💸 ❌ Send transaction(${tx.type}) failed with ${result.message}.`
-              );
-              resolve(result);
             } else if (method === "ExtrinsicSuccess") {
-              const result: TxRes = {
-                status: "success",
-              };
-
-              srvs.logger.info(
-                `  ↪ 💸 ✅ Send transaction(${tx.type}) success.`
-              );
-              resolve(result);
+              resolve();
             }
           });
-        } else {
         }
       }).catch((e) => {
         reject(e);
@@ -281,23 +203,22 @@ export class Service {
     });
   }
 
-  private initAccount() {
-    if (this.keyPair) return;
-    const keyring = new Keyring({ type: "sr25519" });
-    this.keyPair = keyring.createFromUri(this.args.secret);
-  }
-
   private async listenBlocks() {
-    this.unsubscribeBlocks = await this.api.rpc.chain.subscribeNewHeads(
-      (header) => {
-        this.now = header.number.toNumber();
-        emitter.emit("header", header);
+    await this.api.rpc.chain.subscribeNewHeads(async (header) => {
+      this.latestBlockNum = header.number.toNumber();
+      if (this.latestBlockNum % (this.constants.roundDuration / 10) === 0) {
+        this.updateReportState();
       }
-    );
+      this.shouldReport =
+        !this.reportState.roundReported &&
+        this.latestBlockNum >= this.reportState.planReportAt;
+
+      emitter.emit("header", header);
+    });
   }
 
   private async listenEvents() {
-    this.unsubscribeEvents = await this.api.query.system.events((events) => {
+    await this.api.query.system.events((events) => {
       for (const ev of events) {
         const {
           event: { data, method },
@@ -315,12 +236,67 @@ export class Service {
           const cid = hex2str(data[0].toString());
           emitter.emit("file:del", cid);
         } else if (method === "NodeReported") {
-          if (data[0].eq(this.address)) {
+          if (data[0].eq(this.walletAddress)) {
             emitter.emit("reported");
           }
         }
       }
     });
+  }
+
+  private async updateReportState(): Promise<ReportState> {
+    const [maybeNode, nextRoundAtN] = await Promise.all([
+      this.api.query.fileStorage.nodes(this.walletAddress),
+      this.api.query.fileStorage.nextRoundAt(),
+    ]);
+    const { roundDuration } = this.constants;
+    const nextRoundAt = nextRoundAtN.toNumber();
+    const nextNextRoundAt = nextRoundAt + roundDuration;
+    const currentRoundAt = nextRoundAt - roundDuration;
+    const node = maybeNode.unwrapOrDefault();
+    const reportedAt = node.reportedAt.toNumber();
+
+    let planReportAt = this.reportState?.planReportAt || 0;
+    const safePlanReportAt = (maybePlanReportAt) =>
+      maybePlanReportAt > nextNextRoundAt - 5
+        ? _.random(nextNextRoundAt - roundDuration / 2, nextNextRoundAt - 5)
+        : maybePlanReportAt;
+
+    if (maybeNode.isNone) {
+      planReportAt = this.latestBlockNum + _.random(10, 20);
+    } else {
+      if (planReportAt <= currentRoundAt && reportedAt < currentRoundAt) {
+        planReportAt = Math.min(
+          this.latestBlockNum + _.random(10, 20),
+          nextRoundAt - 5
+        );
+      } else if (
+        planReportAt <= currentRoundAt &&
+        reportedAt >= currentRoundAt
+      ) {
+        planReportAt = safePlanReportAt(reportedAt + roundDuration);
+      } else if (
+        currentRoundAt < planReportAt &&
+        planReportAt < nextRoundAt &&
+        reportedAt < currentRoundAt
+      ) {
+      } else if (
+        currentRoundAt < planReportAt &&
+        planReportAt < nextRoundAt &&
+        reportedAt >= currentRoundAt
+      ) {
+        planReportAt = safePlanReportAt(reportedAt + roundDuration);
+      }
+    }
+    this.reportState = {
+      rid: node.rid.toNumber(),
+      nextRoundAt: nextRoundAt,
+      reportedAt,
+      roundReported: reportedAt !== 0 && reportedAt >= currentRoundAt,
+      planReportAt: planReportAt,
+    };
+    srvs.logger.info(`Update report state`, this.reportState);
+    return this.reportState;
   }
 
   private async syncConstants() {
@@ -340,32 +316,32 @@ export class Service {
     }, {} as any);
   }
 
-  private async waitReady() {
-    try {
-      await this.api.isReadyOrError;
-      srvs.logger.info(
-        `⚡️ Chain info: ${this.api.runtimeChain}, ${this.api.runtimeVersion.specVersion}`
-      );
-      while (true) {
-        const health = await this.api.rpc.system.health();
-        if (health.isSyncing.isFalse) break;
-        const header = await this.header();
-        srvs.logger.info(
-          `⛓  Chain is synchronizing, current block number ${header.number.toNumber()}`
-        );
-        await sleep(this.args.blockSecs * 1000);
-      }
-    } catch (err) {
-      srvs.logger.warn(`⛓  Connection broken, ${err.message}. retrying...`);
-      await sleep(this.args.blockSecs * 1000);
-      return this[INIT_KEY]();
+  private async waitSynced() {
+    await this.api.isReady;
+    const halfBlockMs = this.args.blockSecs * 500;
+    while (true) {
+      try {
+        const [{ isSyncing }, header] = await Promise.all([
+          this.api.rpc.system.health(),
+          this.api.rpc.chain.getHeader(),
+        ]);
+        if (isSyncing.isFalse) {
+          await sleep(halfBlockMs);
+          const header2 = await this.api.rpc.chain.getHeader();
+          if (header2.number.eq(header.number)) {
+            const header3 = await this.api.rpc.chain.getHeader();
+            if (header3.number.toNumber() > header.number.toNumber()) {
+              this.latestBlockNum = header3.number.toNumber();
+              srvs.logger.info(`Chain synced at ${this.latestBlockNum}`);
+              break;
+            }
+          }
+        }
+        this.latestBlockNum = header.number.toNumber();
+      } catch {}
+      srvs.logger.info(`Syncing block at ${this.latestBlockNum}, waiting`);
+      await sleep(halfBlockMs);
     }
-  }
-
-  private async header() {
-    const header = await this.api.rpc.chain.getHeader();
-    this.now = header.number.toNumber();
-    return header;
   }
 }
 
