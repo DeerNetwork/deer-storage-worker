@@ -24,45 +24,26 @@ export interface Args {
   url: string;
   secret: string;
   blockSecs: number;
-}
-
-export interface ChainConstants {
-  roundDuration: number;
-  maxFileReplicas: number;
-  effectiveFileReplicas: number;
-  maxFileSize: number;
-  maxReportFiles: number;
-}
-
-export interface ReportState {
-  rid: number;
-  nextRoundAt: number;
-  reportedAt: number;
-  roundReported: boolean;
-  planReportAt: number;
-}
-
-export interface TxRes {
-  status?: string;
-  message?: string;
-  details?: string;
+  reportBlocks: number;
 }
 
 export class Service {
-  public constants: ChainConstants;
+  public constants: ChainConsts;
   public walletAddress: string;
-  public blockSecs: number;
   public latestBlockNum = 0;
   public reportState: ReportState;
-  public shouldReport = false;
+  public health = true;
+  public blockSecs: number;
 
   private args: Args;
   private provider: WsProvider;
   private api: ApiPromise;
   private wallet: KeyringPair;
+  private startingReport = 0;
+
   public constructor(option: InitOption<Args, Service>) {
     this.args = option.args;
-    this.blockSecs = this.args.blockSecs;
+    this.blockSecs = option.args.blockSecs;
   }
 
   public async [INIT_KEY]() {
@@ -71,18 +52,13 @@ export class Service {
       provider: this.provider,
       typesBundle: typesBundleForPolkadot,
     });
-    await Promise.all([this.waitSynced(), cryptoWaitReady()]);
+    await Promise.all([this.api.isReady, cryptoWaitReady()]);
     const keyring = new Keyring({ type: "sr25519" });
     this.wallet = keyring.createFromUri(this.args.secret);
     this.walletAddress = this.api
       .createType("AccountId", this.wallet.address)
       .toString();
     srvs.logger.info(`Wallet address: ${this.walletAddress}`);
-
-    Promise.all([await this.syncConstants(), await this.updateReportState()]);
-
-    this.listenBlocks();
-    this.listenEvents();
   }
 
   public async [STOP_KEY]() {
@@ -92,16 +68,30 @@ export class Service {
     srvs.logger.info(`Chain is disconnected`);
   }
 
-  public async getFileOrder(cid: string) {
-    return this.api.query.fileStorage.fileOrders(cid);
+  public async start() {
+    await this.waitSynced();
+    Promise.all([await this.syncConstants(), await this.updateReportState()]);
+    this.listenBlocks();
+    this.listenEvents();
   }
 
-  public async getStoreFie(cid: string) {
-    return this.api.query.fileStorage.storeFiles(cid);
-  }
-
-  public numBlocksBeforeReport() {
-    return this.reportState.planReportAt - this.latestBlockNum;
+  public async getFile(cid: string): Promise<ChainFile> {
+    const [maybeStoreFile, maybeFileOrder] = await Promise.all([
+      this.api.query.fileStorage.storeFiles(cid),
+      this.api.query.fileStorage.fileOrders(cid),
+    ]);
+    if (maybeStoreFile.isNone) return;
+    const storeFile = maybeStoreFile.unwrap();
+    const fileOrder = maybeFileOrder.unwrap();
+    return {
+      addedAt: storeFile.addedAt.toNumber(),
+      reserved: storeFile.reserved.toBn().toString(),
+      fileSize: fileOrder.fileSize.toNumber() || storeFile.fileSize.toNumber(),
+      fee: fileOrder.fee.toBn().toString(),
+      expireAt: fileOrder.expireAt.toNumber(),
+      numReplicas: fileOrder.replicas.length,
+      existReplica: !!fileOrder.replicas.find((f) => f.eq(this.walletAddress)),
+    };
   }
 
   public async getStash() {
@@ -145,20 +135,36 @@ export class Service {
     return this.sendTx(tx);
   }
 
-  public async listStoreFiles() {
-    const storeFiles = await this.api.query.fileStorage.storeFiles.entries();
-    return storeFiles.map((storeFile) => ({
-      cid: hex2str(storeFile[0].args[0].toString()),
-      storeFile: storeFile[1].unwrap(),
-    }));
+  public async checkHealth() {
+    try {
+      await this.api.rpc.system.syncState();
+      this.health = true;
+    } catch (err) {
+      srvs.logger.error(`Chain cheak health throws ${err.message}`);
+      this.health = false;
+    }
   }
 
-  public async listFileOrders() {
-    const fileOrders = await this.api.query.fileStorage.fileOrders.entries();
-    return fileOrders.map((fileOrder) => ({
-      cid: hex2str(fileOrder[0].args[0].toString()),
-      fileOrder: fileOrder[1].unwrap(),
-    }));
+  public async iterStoreFileKeys(pageSize: number, startKey?: string) {
+    const keys = await this.api.query.fileStorage.storeFiles.keysPaged({
+      args: [],
+      pageSize,
+      startKey,
+    });
+    return keys;
+  }
+
+  public commonProps(): CommonProps {
+    const { blockSecs, latestBlockNum } = srvs.chain;
+    const { planReportAt } = srvs.chain.reportState;
+    const { roundDuration, maxFileReplicas } = srvs.chain.constants;
+    return {
+      blockSecs,
+      roundDuration,
+      latestBlockNum,
+      planReportAt,
+      maxFileReplicas,
+    };
   }
 
   private sendTx(tx: SubmittableExtrinsic): Promise<void> {
@@ -184,11 +190,11 @@ export class Service {
                 const error = this.api.registry.findMetaError(
                   new Uint8Array([mod.index.toNumber(), mod.error.toNumber()])
                 );
-                throw new Error(
-                  `Transaction throw ${error.section}.${
-                    error.name
-                  }, ${error.docs.join("")}`
-                );
+                const message = `Transaction throw ${error.section}.${
+                  error.name
+                }, ${error.docs.join("")}`;
+                emitter.emit("fatal", message);
+                throw new Error(message);
               } else {
                 throw new Error(`Transaction throw ${dispatchError.type}`);
               }
@@ -209,35 +215,42 @@ export class Service {
       if (this.latestBlockNum % (this.constants.roundDuration / 10) === 0) {
         this.updateReportState();
       }
-      this.shouldReport =
+      const shouldReport =
         !this.reportState.roundReported &&
         this.latestBlockNum >= this.reportState.planReportAt;
 
-      emitter.emit("header", header);
+      if (
+        shouldReport &&
+        this.latestBlockNum - this.startingReport > this.args.reportBlocks
+      ) {
+        srvs.engine.reportWork();
+        this.startingReport = this.latestBlockNum;
+      }
     });
   }
 
   private async listenEvents() {
-    await this.api.query.system.events((events) => {
+    await this.api.query.system.events(async (events) => {
       for (const ev of events) {
         const {
           event: { data, method },
         } = ev;
         if (method === "StoreFileSubmitted") {
           const cid = hex2str(data[0].toString());
-          emitter.emit("file:add", cid);
-        } else if (method === "StoreFileSettleIncomplete") {
+          await srvs.engine.enqueueAddFile(cid);
+        } else if (method === "StoreFileSettledIncomplete") {
           const cid = hex2str(data[0].toString());
-          emitter.emit("file:add", cid);
+          await srvs.engine.enqueueAddFile(cid);
         } else if (method === "StoreFileRemoved") {
           const cid = hex2str(data[0].toString());
-          emitter.emit("file:del", cid);
+          await srvs.engine.enqueueDelFile(cid);
         } else if (method === "FileForceDeleted") {
           const cid = hex2str(data[0].toString());
-          emitter.emit("file:del", cid);
+          await srvs.engine.enqueueDelFile(cid);
         } else if (method === "NodeReported") {
           if (data[0].eq(this.walletAddress)) {
-            emitter.emit("reported");
+            await this.updateReportState();
+            await srvs.engine.commitReport();
           }
         }
       }
@@ -250,6 +263,7 @@ export class Service {
       this.api.query.fileStorage.nextRoundAt(),
     ]);
     const { roundDuration } = this.constants;
+    const { reportBlocks } = this.args;
     const nextRoundAt = nextRoundAtN.toNumber();
     const nextNextRoundAt = nextRoundAt + roundDuration;
     const currentRoundAt = nextRoundAt - roundDuration;
@@ -258,8 +272,11 @@ export class Service {
 
     let planReportAt = this.reportState?.planReportAt || 0;
     const safePlanReportAt = (maybePlanReportAt) =>
-      maybePlanReportAt > nextNextRoundAt - 5
-        ? _.random(nextNextRoundAt - roundDuration / 2, nextNextRoundAt - 5)
+      maybePlanReportAt > nextNextRoundAt - reportBlocks
+        ? _.random(
+            nextNextRoundAt - roundDuration / 2,
+            nextNextRoundAt - reportBlocks
+          )
         : maybePlanReportAt;
 
     if (maybeNode.isNone) {
@@ -268,7 +285,7 @@ export class Service {
       if (planReportAt <= currentRoundAt && reportedAt < currentRoundAt) {
         planReportAt = Math.min(
           this.latestBlockNum + _.random(10, 20),
-          nextRoundAt - 5
+          nextRoundAt - reportBlocks
         );
       } else if (
         planReportAt <= currentRoundAt &&
@@ -317,8 +334,7 @@ export class Service {
   }
 
   private async waitSynced() {
-    await this.api.isReady;
-    const halfBlockMs = this.args.blockSecs * 500;
+    const halfBlockMs = this.blockSecs * 500;
     while (true) {
       try {
         const [{ isSyncing }, header] = await Promise.all([
@@ -329,6 +345,7 @@ export class Service {
           await sleep(halfBlockMs);
           const header2 = await this.api.rpc.chain.getHeader();
           if (header2.number.eq(header.number)) {
+            await sleep(this.blockSecs);
             const header3 = await this.api.rpc.chain.getHeader();
             if (header3.number.toNumber() > header.number.toNumber()) {
               this.latestBlockNum = header3.number.toNumber();
@@ -346,3 +363,37 @@ export class Service {
 }
 
 export const init = createInitFn(Service);
+
+export interface ChainConsts {
+  roundDuration: number;
+  maxFileReplicas: number;
+  effectiveFileReplicas: number;
+  maxFileSize: number;
+  maxReportFiles: number;
+}
+
+export interface ReportState {
+  rid: number;
+  nextRoundAt: number;
+  reportedAt: number;
+  roundReported: boolean;
+  planReportAt: number;
+}
+
+export interface ChainFile {
+  addedAt: number;
+  reserved: string;
+  fileSize: number;
+  fee: string;
+  expireAt: number;
+  numReplicas: number;
+  existReplica: boolean;
+}
+
+export interface CommonProps {
+  blockSecs: number;
+  latestBlockNum: number;
+  planReportAt: number;
+  roundDuration: number;
+  maxFileReplicas: number;
+}

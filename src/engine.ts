@@ -1,94 +1,115 @@
-import { ServiceOption, InitOption, createInitFn } from "use-services";
+import {
+  ServiceOption,
+  createInitFn,
+  InitOption,
+  STOP_KEY,
+} from "use-services";
+import _ from "lodash";
 import { srvs, emitter } from "./services";
 import { sleep } from "./utils";
-import {
-  MaxPriorityQueue,
-  MinPriorityQueue,
-  PriorityQueueItem,
-} from "@datastructures-js/priority-queue";
-import { Task } from "./types";
 
 export type Option<S extends Service> = ServiceOption<Args, S>;
 
 export interface Args {
-  concurrency: number;
+  iterFilesPageSize: number;
 }
+
+const WHILE_SLEEP = 2000;
+const CHECK_HEALTH_SLEEP = 180000;
 
 export class Service {
   private args: Args;
   private machine: string;
-  private ipfsQueue: MinPriorityQueue<string>;
-  private teaQueue: MaxPriorityQueue<Task>;
-  private startingReportAt = 0;
-  private reportCids: string[];
-  private ipfsConcurrency = 0;
-  public constructor(option: InitOption<Args, Service>) {
+  private iterKey: string;
+  private ipfsQueue: QueueItem[] = [];
+  private teaQueue: QueueItem[] = [];
+  private delQueue: string[] = [];
+  private checkQueue: string[] = [];
+  private addFiles: string[] = [];
+  private settleFiles: string[] = [];
+  private destoryed = false;
+
+  constructor(option: InitOption<Args, Service>) {
     this.args = option.args;
-    this.ipfsConcurrency = this.args.concurrency;
   }
 
-  public async run() {
-    this.ipfsQueue = new MaxPriorityQueue();
-    this.teaQueue = new MaxPriorityQueue();
-    let isTeaclaveOk = false;
-    do {
-      isTeaclaveOk = await this.initTeaclave();
-      if (!isTeaclaveOk) await sleep(3 * srvs.chain.blockSecs * 1000);
-    } while (!isTeaclaveOk);
+  public async [STOP_KEY]() {
+    this.destoryed = true;
+  }
 
-    srvs.store.run();
+  public async start() {
+    await srvs.chain.start();
+    await this.waitTeaclave();
     this.runIpfsQueue();
     this.runTeaQueue();
-
-    emitter.on("header", async () => {
-      try {
-        const { shouldReport, latestBlockNum } = srvs.chain;
-        if (shouldReport) {
-          if (this.startingReportAt > 0) {
-            if (latestBlockNum - this.startingReportAt > 60) {
-              this.startingReportAt = 0;
-            }
-          } else {
-            this.startingReportAt = latestBlockNum;
-            this.teaQueue.enqueue({ type: "report" }, 4);
-          }
-        }
-        if (latestBlockNum % 60 === 0) {
-          this.checkPending();
-        }
-      } catch (e) {
-        srvs.logger.error(`Caught on event header, ${e.toString()}`);
-      }
-    });
-    emitter.on("file:add", async (cid) => {
-      const [maybeFileOrder, maybeStoreFile] = await Promise.all([
-        srvs.chain.getStoreFie(cid),
-        srvs.chain.getFileOrder(cid),
-      ]);
-      if (maybeStoreFile.isSome) {
-        srvs.store.addStoreFile(cid, maybeFileOrder.unwrap());
-      }
-      if (maybeFileOrder.isSome) {
-        srvs.store.addStoreFile(cid, maybeFileOrder.unwrap());
-      }
-      if (this.startingReportAt) {
-        srvs.logger.debug(`Skip enqueue addFile ${cid}`);
-        return;
-      }
-      srvs.logger.debug(`IpfsQueue addFile ${cid}`);
-      this.ipfsQueue.enqueue(cid, srvs.chain.numBlocksBeforeReport());
-    });
-    emitter.on("file:del", async (cid) => {
-      srvs.logger.debug(`TeaQueue delFile ${cid}`);
-      this.teaQueue.enqueue({ type: "delFile", cid }, 1);
-    });
-    emitter.on("reported", async () => {
-      srvs.logger.debug("TeaQueue commit");
-      this.teaQueue.enqueue({ type: "commit" }, 4);
-    });
+    this.runDelQueue();
+    this.runCheckQueue();
+    this.checkHealth();
+    this.iterChainFiles();
+    this.iterTeaFiles();
   }
 
-  private async initTeaclave() {
+  public async reportWork() {
+    try {
+      await this.commitReport();
+      const { maxReportFiles } = srvs.chain.constants;
+      const addFiles = this.addFiles.slice();
+      const settleFiles = this.settleFiles.slice();
+      const currentAddFiles = addFiles.splice(0, maxReportFiles);
+      const currentSettleFiles = settleFiles.splice(0, maxReportFiles);
+      const reportData = await srvs.teaclave.preparePeport(currentAddFiles);
+      await srvs.chain.reportWork(this.machine, reportData, currentSettleFiles);
+      this.addFiles = addFiles;
+      this.settleFiles = settleFiles;
+      currentAddFiles.forEach((cid) => {
+        if (!this.checkQueue.find((v) => v === cid)) this.checkQueue.push(cid);
+      });
+      srvs.logger.info("Report works successed");
+    } catch (err) {
+      srvs.logger.error(`Fail to report works, ${err.message}`);
+    }
+  }
+
+  public async commitReport() {
+    const { rid } = srvs.chain.reportState;
+    const system = await srvs.teaclave.system();
+    if (system.cursor_committed < rid) {
+      await srvs.teaclave.commitReport(rid);
+    }
+  }
+
+  public async enqueueAddFile(cid: string) {
+    try {
+      const file = await this.worthAddFile(cid);
+      if (!file) return;
+      this.ipfsQueue.push({
+        cid,
+        fileSize: file.fileSize,
+        numReplicas: file.numReplicas,
+      });
+    } catch (err) {
+      srvs.logger.error(`Fail to add file ${cid}, ${err.message}`);
+    }
+  }
+
+  public async enqueueDelFile(cid: string) {
+    this.ipfsQueue = this.ipfsQueue.filter((v) => v.cid !== cid);
+    this.teaQueue = this.teaQueue.filter((v) => v.cid !== cid);
+    this.addFiles = this.addFiles.filter((v) => v !== cid);
+    this.settleFiles = this.settleFiles.filter((v) => v !== cid);
+    this.delQueue.push(cid);
+  }
+
+  private async waitTeaclave() {
+    let isTeaclaveOk = false;
+    do {
+      if (this.destoryed) break;
+      isTeaclaveOk = await this.setupTeaclave();
+      if (!isTeaclaveOk) await sleep(30000);
+    } while (!isTeaclaveOk);
+  }
+
+  private async setupTeaclave() {
     try {
       const maybeStash = await srvs.chain.getStash();
       if (maybeStash.isNone) {
@@ -97,7 +118,8 @@ export class Service {
       }
       const stash = maybeStash.unwrap();
       if (stash.machineId.isNone) {
-        await this.registerTeaclave();
+        srvs.logger.info("Try to register teaclave");
+        await this.registerNode();
         return false;
       }
       const system = await srvs.teaclave.system();
@@ -105,28 +127,30 @@ export class Service {
       if (machine !== "0x" + system.machine_id) {
         emitter.emit(
           "fatal",
-          `Differect machin detected, onchain expect ${system.machine_id}, current ${machine}`
+          `Mismatch machine, onchain ${system.machine_id}, current ${machine}`
         );
         return false;
       }
       if (!system.enclave) {
-        await this.registerTeaclave();
+        await this.registerNode();
         return false;
       }
       const maybeRegister = await srvs.chain.getRegister(machine);
       if (maybeRegister.isNone) {
-        await this.registerTeaclave();
+        await this.registerNode();
         return false;
       }
       if (maybeRegister.unwrap().enclave.toHex() !== "0x" + system.enclave) {
-        await this.registerTeaclave();
+        srvs.logger.warn(`Mistach enclave, try register node`);
+        await this.registerNode();
         return false;
       }
       if (
         srvs.chain.reportState.rid &&
         system.cursor_committed !== srvs.chain.reportState.rid
       ) {
-        await this.teaQueue.enqueue({ type: "commit" }, 4);
+        srvs.logger.warn(`Last commit to submit to teaclave, try resubmit`);
+        await srvs.teaclave.commitReport(srvs.chain.reportState.rid);
       }
       this.machine = machine;
       return true;
@@ -135,176 +159,252 @@ export class Service {
         srvs.logger.warn("Waiting for teaclave ready");
         return false;
       }
-      if (
-        /Invalid Transaction: Transaction has a bad signature/.test(err.message)
-      ) {
-        emitter.emit("fatal", "Fail to call tx");
-        return false;
-      }
-      srvs.logger.error(`Fail to init teaclave, ${err.toString()}`);
+      srvs.logger.error(`Fail to setup teaclave, ${err.toString()}`);
       return false;
     }
   }
 
-  private async registerTeaclave() {
+  private async registerNode() {
     const attest = await srvs.teaclave.attest();
-    if (!attest) return;
+    if (!attest) {
+      srvs.logger.info("Fail to fetch attest");
+      return false;
+    }
     try {
       await srvs.chain.register(attest);
+      srvs.logger.info("Register node successful");
+      return true;
     } catch (err) {
       srvs.logger.error(`Fail to register node, ${err.message}`);
-      return;
+      return false;
     }
-    srvs.logger.info("Register node successful");
   }
 
   private async runIpfsQueue() {
     while (true) {
-      if (this.ipfsQueue.isEmpty() || this.ipfsConcurrency <= 0) {
-        await sleep(2000);
+      if (this.destoryed) break;
+      if (this.ipfsQueue.length === 0 || !srvs.ipfs.health) {
+        await sleep(WHILE_SLEEP);
         continue;
       }
-      const { element: cid } =
-        this.ipfsQueue.dequeue() as PriorityQueueItem<string>;
-      this.ipfsConcurrency += 1;
-      await this.addIpfsFile(cid);
+      const { maxReportFiles } = srvs.chain.constants;
+      if (this.addFiles.length >= maxReportFiles) {
+        await sleep(WHILE_SLEEP);
+        continue;
+      }
+      const item = this.dequeueIpfs();
+      await this.addIpfsFile(item);
     }
   }
 
   private async runTeaQueue() {
     while (true) {
-      if (this.teaQueue.isEmpty()) {
-        await sleep(2000);
+      if (this.destoryed) break;
+      if (this.teaQueue.length === 0 || !srvs.teaclave.health) {
+        await sleep(WHILE_SLEEP);
         continue;
       }
-      const { element: task } =
-        this.teaQueue.dequeue() as PriorityQueueItem<Task>;
-      if (task.type === "addFile") {
-        await this.addTeaFile(task.cid);
-      } else if (task.type === "delFile") {
-        await this.delFile(task.cid);
-      } else if (task.type === "report") {
-        await this.report();
-      } else if (task.type === "commit") {
-        await this.commit();
-      }
+      const item = this.dequeueTea();
+      await this.addTeaFile(item);
     }
   }
 
-  private async addIpfsFile(cid) {
-    try {
-      srvs.logger.debug(`Execute addIpfsFile ${cid}`);
-      const file = srvs.store.getFile(cid);
-      if (!file) {
-        srvs.logger.warn(`File ${cid} must exist when addIpfsFile`);
-        return;
+  private async runDelQueue() {
+    while (true) {
+      if (this.destoryed) break;
+      if (
+        this.delQueue.length === 0 ||
+        !srvs.ipfs.health ||
+        !srvs.teaclave.health
+      ) {
+        await sleep(WHILE_SLEEP * 2);
+        continue;
       }
-      // TODO check disk space
-      if (!file.isPinned) {
-        const ipfsFileSize = await srvs.ipfs.size(cid);
-        if (ipfsFileSize > srvs.chain.constants.maxFileSize) {
-          throw new Error("fileSize too large");
-        }
-        await srvs.ipfs.pinAdd(cid, file.fileSize);
-        srvs.store.addPin(cid);
-      }
-      this.teaQueue.enqueue({ type: "addFile", cid }, 3);
-      srvs.logger.info(`AddIpfsFile ${cid} success`);
-    } catch (e) {
-      srvs.store.markFileIpfsFail(cid);
-      srvs.logger.error(`Fail to add ipfs file ${cid}, ${e.toString()}`);
-    }
-    this.ipfsConcurrency -= 1;
-  }
-
-  private async addTeaFile(cid) {
-    try {
-      srvs.logger.debug(`Execute addTeaFile ${cid}`);
-      const file = srvs.store.getFile(cid);
-      if (!file) {
-        srvs.logger.warn(`File ${cid} must exist when addTeaFile`);
-        return;
-      }
-      if (!file.isAdded) {
-        const res = await srvs.teaclave.addFile(cid);
-        if (res)
-          srvs.store.addTeaFile({ cid, fileSize: res.size, committed: false });
-      }
-      srvs.logger.info(`Call addTeaFile ${cid} success`);
-    } catch (e) {
-      srvs.logger.error(`Fail to add file ${cid}, ${e.toString()}`);
+      const cid = this.delQueue.shift();
+      await this.delFile(cid);
     }
   }
 
-  private async delFile(cid) {
-    try {
-      srvs.logger.debug(`Execute delFile ${cid}`);
-      await srvs.store.checkDeleteCid(cid);
-      await srvs.store.deleteDirtyFile(cid);
-    } catch (e) {
-      srvs.logger.error(`Fail to del file ${cid}, ${e.toString()}`);
-    }
-  }
-
-  private async report() {
-    try {
-      srvs.logger.debug("Worker trying to report works");
-      const { roundReported, rid } = srvs.chain.reportState;
-      if (roundReported) return;
-      const system = await srvs.teaclave.system();
-      if (system.cursor_committed < rid) {
-        srvs.logger.debug("Worker trying to commit miss report");
-        await srvs.teaclave.commitReport(rid);
+  private async runCheckQueue() {
+    while (true) {
+      if (this.destoryed) break;
+      if (
+        this.delQueue.length === 0 ||
+        !srvs.ipfs.health ||
+        !srvs.teaclave.health
+      ) {
+        await sleep(WHILE_SLEEP * 3);
+        continue;
       }
-      const { addFiles, settleFiles } = await srvs.store.getReportFiles();
-      const reportData = await srvs.teaclave.preparePeport(addFiles);
+      const cid = this.checkQueue.shift();
       try {
-        await srvs.chain.reportWork(this.machine, reportData, settleFiles);
-      } catch (err) {
-        srvs.logger.error(`Fail to report work, ${err.message}`);
-        emitter.emit("fatal", "Fail to report work");
-      }
-      this.reportCids = [
-        ...addFiles.slice(0, srvs.chain.constants.maxReportFiles),
-        ...settleFiles.slice(0, srvs.chain.constants.maxReportFiles),
-      ];
-      srvs.logger.info("Report successed");
-    } catch (e) {
-      srvs.logger.error(`Fail to report ${e.toString()}`);
-    }
-    this.startingReportAt = 0;
-  }
-
-  private async commit() {
-    try {
-      srvs.logger.debug("Worker trying to commit report");
-      const { rid } = srvs.chain.reportState;
-      await srvs.teaclave.commitReport(rid);
-      this.afterCommit();
-      srvs.logger.info("Teaclave commit success");
-    } catch (e) {
-      srvs.logger.error(`Fail to commit report, ${e.toString()}`);
+        const teaFile = await srvs.teaclave.getFile(cid);
+        if (!teaFile) continue;
+        const file = await this.worthAddFile(cid);
+        if (!file) {
+          this.enqueueDelFile(cid);
+          continue;
+        }
+        if (teaFile.committed) {
+          if (!this.addFiles.find((v) => v === cid)) this.addFiles.push(cid);
+        }
+        this.checkQueue.push(cid);
+        continue;
+      } catch {}
     }
   }
 
-  private async afterCommit() {
+  private async addIpfsFile(item: QueueItem) {
+    const { cid, fileSize } = item;
     try {
-      await srvs.store.checkReportCids(this.reportCids);
-    } catch {}
+      const file = await this.worthAddFile(cid);
+      if (!file) return;
+      await srvs.ipfs.pinAdd(cid, fileSize);
+      this.teaQueue.push(item);
+    } catch (err) {
+      srvs.logger.error(`Fail to add ipfs file ${cid}, ${err.message}`);
+    }
   }
 
-  private async checkPending() {
+  private async addTeaFile(item: QueueItem) {
+    const { cid, fileSize } = item;
     try {
-      const myFiles = await srvs.store.getPendingFiles();
-      srvs.logger.debug(`Get pendding files ${JSON.stringify(myFiles)}`);
-      for (const cid of myFiles.ipfsFiles) {
-        this.ipfsQueue.enqueue(cid, srvs.chain.constants.roundDuration);
+      await srvs.teaclave.addFile(cid, fileSize);
+      if (!this.addFiles.find((v) => v === cid)) this.addFiles.push(cid);
+    } catch (err) {
+      srvs.logger.error(`Fail to add tea file ${cid}, ${err.message}`);
+    }
+  }
+
+  private async delFile(cid: string) {
+    try {
+      const file = await srvs.chain.getFile(cid);
+      if (file && file.existReplica) return;
+      await srvs.ipfs.pinRemove(cid);
+      await srvs.teaclave.delFile(cid);
+    } catch (err) {
+      srvs.logger.error(`Fail to del file ${cid}, ${err.message}`);
+    }
+  }
+
+  private async iterChainFiles() {
+    try {
+      const keys = await srvs.chain.iterStoreFileKeys(
+        this.args.iterFilesPageSize,
+        this.iterKey
+      );
+      for (const key of keys) {
+        const cid = key.toHuman()[0];
+        await this.enqueueAddFile(cid);
       }
-      for (const cid of myFiles.teaFiles) {
-        this.teaQueue.enqueue({ type: "addFile", cid }, 3);
+      this.iterKey = _.last(keys).toString();
+    } catch (err) {
+      srvs.logger.error(`Fail to iter chain files, ${err.message}`);
+    }
+  }
+
+  private async iterTeaFiles() {
+    try {
+      const teaFiles = await srvs.teaclave.listFiles();
+      for (const teaFile of teaFiles) {
+        const { cid } = teaFile;
+        if (!this.checkQueue.find((v) => v === cid)) this.checkQueue.push(cid);
       }
-    } catch {}
+    } catch (err) {
+      srvs.logger.error(`Fail to iter tea files, ${err.message}`);
+    }
+  }
+
+  private async worthAddFile(cid: string) {
+    const file = await srvs.chain.getFile(cid);
+    if (!file) return;
+    const { maxFileReplicas } = srvs.chain.constants;
+    if (file.numReplicas >= maxFileReplicas && !file.existReplica) return;
+    if (
+      file.reserved === "0" &&
+      file.expireAt >= srvs.chain.latestBlockNum &&
+      file.existReplica
+    ) {
+      if (!this.settleFiles.find((v) => v === cid)) this.settleFiles.push(cid);
+      return;
+    }
+    if (!(await srvs.ipfs.existProv(cid))) {
+      srvs.logger.warn(`Invalid file ${cid}`);
+      return;
+    }
+    return file;
+  }
+
+  private async checkHealth() {
+    while (true) {
+      await sleep(CHECK_HEALTH_SLEEP);
+      await Promise.all([
+        srvs.chain.checkHealth(),
+        srvs.ipfs.checkHealth(),
+        srvs.teaclave.checkHealth(),
+      ]);
+    }
+  }
+
+  private dequeueIpfs(): QueueItem {
+    let maxScore = 0;
+    let queueIndex = 0;
+    this.ipfsQueue.forEach((item, index) => {
+      const { fileSize } = item;
+      const timeEstimate =
+        srvs.ipfs.estimateTime(fileSize, true) +
+        srvs.teaclave.estimateTime(fileSize, true);
+      const score = this.calculateScore(item, timeEstimate);
+      if (score > maxScore) {
+        queueIndex = index;
+        maxScore = score;
+      }
+    });
+    return this.ipfsQueue.splice(queueIndex, 1)[0];
+  }
+
+  private dequeueTea(): QueueItem {
+    let maxScore = 0;
+    let queueIndex = 0;
+    this.teaQueue.forEach((item, index) => {
+      const { fileSize } = item;
+      const timeEstimate = srvs.teaclave.estimateTime(fileSize, true);
+      const score = this.calculateScore(item, timeEstimate);
+      if (score > maxScore) {
+        queueIndex = index;
+        maxScore = score;
+      }
+    });
+    return this.teaQueue.splice(queueIndex, 1)[0];
+  }
+
+  private calculateScore(item: QueueItem, timeEstimate: number) {
+    const {
+      blockSecs,
+      roundDuration,
+      latestBlockNum,
+      planReportAt,
+      maxFileReplicas,
+    } = srvs.chain.commonProps();
+    const { numReplicas } = item;
+    const timeBlocks =
+      Math.ceil(timeEstimate / blockSecs / 1000) % roundDuration;
+    let reportBlocks: number;
+    if (timeBlocks + latestBlockNum <= planReportAt) {
+      reportBlocks = planReportAt - latestBlockNum - timeBlocks;
+    } else {
+      reportBlocks = planReportAt + roundDuration - latestBlockNum - timeBlocks;
+    }
+    const blockScore = Math.max(30 - reportBlocks, 0) * 1000;
+    const replicaScore = Math.max(maxFileReplicas - numReplicas, 0) * 100;
+    return blockScore + replicaScore;
   }
 }
 
 export const init = createInitFn(Service);
+
+interface QueueItem {
+  cid: string;
+  fileSize: number;
+  numReplicas: number;
+}

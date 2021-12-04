@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { init, srvs } from "./services";
+import { emitter, init, srvs } from "./services";
 import pEvent from "p-event";
 const pkg = require("../package.json"); // eslint-disable-line
 
@@ -16,18 +16,11 @@ async function main() {
   let stop;
   try {
     stop = await init();
-    // TODO
+    srvs.engine.start();
     srvs.logger.info(`Worker ${pkg.version} started`);
     await Promise.race([
-      ...["SIGINT", "SIGHUP", "SIGTERM"].map((s) =>
-        pEvent(
-          process,
-          s
-          // {
-          //   rejectionEvents: ["uncaughtException", "unhandledRejection"],
-          // },
-        )
-      ),
+      ...["SIGINT", "SIGHUP", "SIGTERM"].map((s) => pEvent(process, s)),
+      pEvent(emitter, "fatal"),
     ]);
   } catch (err) {
     process.exitCode = 1;

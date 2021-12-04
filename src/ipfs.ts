@@ -5,19 +5,29 @@ import {
   createInitFn,
 } from "use-services";
 import { create, IPFSHTTPClient } from "ipfs-http-client";
+import { StatResult } from "ipfs-core-types/src/object";
 import { srvs } from "./services";
 
 export type Option<S extends Service> = ServiceOption<Args, S>;
 
 export interface Args {
   url: string;
-  pinTimeout: number;
-  sizeTimeout: number;
 }
 
+export const TIMEOUT = 1000;
+export const SPEED = 262144; // 256k/s
+
 export class Service {
+  public health = true;
+
   private args: Args;
   private client: IPFSHTTPClient;
+  private currentFile: CurrentFile;
+  private speed = SPEED;
+
+  private count = 0;
+  private summaryTime = 0;
+  private summarySize = 0;
 
   public constructor(option: InitOption<Args, Service>) {
     this.args = option.args;
@@ -27,13 +37,19 @@ export class Service {
     this.client = create({ url: this.args.url });
   }
 
-  async pinAdd(cid: string, fileSize: number): Promise<boolean> {
+  public async pinAdd(cid: string, fileSize: number): Promise<boolean> {
     try {
-      const timeout = this.args.pinTimeout + (fileSize / 1024 / 200) * 1000;
-      await this.client.pin.add(cid, { timeout });
-      srvs.logger.debug(`ipfs.pinAdd ${cid}`);
+      const timeout = (fileSize / this.speed) * 1000;
+      const now = Date.now();
+      this.currentFile = { cid, beginAt: now, endAt: now + timeout, fileSize };
+      await this.client.pin.add(cid, { timeout: 1.2 * timeout });
+      this.count += 1;
+      this.summarySize += fileSize;
+      this.summaryTime += Date.now() - now;
+      this.speed = this.summarySize / this.summaryTime / 1000 || SPEED;
       return true;
     } catch (err) {
+      this.currentFile = null;
       throw new Error(`ipfs.pinAdd ${cid}, ${err.message}`);
     }
   }
@@ -41,7 +57,6 @@ export class Service {
   public async pinRemove(cid: string): Promise<boolean> {
     try {
       await this.client.pin.rm(cid);
-      srvs.logger.debug(`ipfs.rmPin ${cid}`);
     } catch (err) {
       if (/not pinned/.test(err.message)) {
         return true;
@@ -53,7 +68,10 @@ export class Service {
   public async pinList(): Promise<string[]> {
     try {
       const list = [];
-      for await (const { cid } of this.client.pin.ls({ type: "recursive" })) {
+      for await (const { cid } of this.client.pin.ls({
+        type: "recursive",
+        timeout: TIMEOUT,
+      })) {
         list.push(cid.toString());
       }
       return list;
@@ -62,12 +80,12 @@ export class Service {
     }
   }
 
-  public async pinCheck(cid: string): Promise<boolean> {
+  public async pinExist(cid: string): Promise<boolean> {
     try {
       for await (const { cid: cidObj } of this.client.pin.ls({
         type: "recursive",
         paths: cid,
-        timeout: 10000,
+        timeout: TIMEOUT,
       })) {
         if (cidObj.toString() === cid) {
           return true;
@@ -77,21 +95,59 @@ export class Service {
       if (/not pinned/.test(err.message)) {
         return false;
       }
-      throw new Error(`ipfs.pinCheck ${err.message}`);
+      throw new Error(`ipfs.pinExist ${err.message}`);
     }
     return false;
   }
 
-  public async size(cid: string): Promise<number> {
+  public async objectStat(cid: string): Promise<StatResult> {
     try {
-      const info = await this.client.object.stat(cid as any, {
-        timeout: this.args.sizeTimeout,
+      return await this.client.object.stat(cid as any, {
+        timeout: TIMEOUT,
       });
-      return info.CumulativeSize;
     } catch (err) {
-      throw new Error(`ipfs.size ${cid}, ${err.message}`);
+      if (/not found/.test(err.message)) {
+        return null;
+      }
+      throw new Error(`ipfs.object.stat ${cid}, ${err.message}`);
     }
+  }
+
+  public async existProv(cid: string): Promise<boolean> {
+    const providers = this.client.dht.findProvs(cid as any, {
+      timeout: TIMEOUT * 3,
+      numProviders: 1,
+    });
+    for await (const _ of providers) { // eslint-disable-line
+      return true;
+    }
+    return false;
+  }
+
+  public async checkHealth() {
+    try {
+      await this.client.stats.bitswap();
+      this.health = true;
+    } catch (err) {
+      srvs.logger.error(`Ipfs cheak health throws ${err.message}`);
+      this.health = false;
+    }
+  }
+
+  public estimateTime(fileSize: number, current = true): number {
+    let time = (fileSize / this.speed) * 1000;
+    if (current && this.currentFile) {
+      time += Math.max(0, this.currentFile.endAt - Date.now());
+    }
+    return time;
   }
 }
 
 export const init = createInitFn(Service);
+
+interface CurrentFile {
+  cid: string;
+  fileSize: number;
+  beginAt: number;
+  endAt: number;
+}
