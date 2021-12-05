@@ -47,6 +47,7 @@ export class Service {
       this.summarySize += fileSize;
       this.summaryTime += Date.now() - now;
       this.speed = this.summarySize / this.summaryTime / 1000 || SPEED;
+      this.currentFile = null;
       return true;
     } catch (err) {
       this.currentFile = null;

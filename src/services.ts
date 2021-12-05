@@ -16,7 +16,7 @@ const options = {
     init: Winston.init,
     args: {
       console: {
-        level: "debug",
+        level: process.env.WORKER__LOG__LEVEL || "info",
       },
     },
   } as Winston.Option<Winston.Service>,
@@ -28,7 +28,7 @@ const options = {
     init: Chain.init,
     args: {
       url: "ws://127.0.0.1:9944",
-      secret: "//Alice",
+      secret: process.env.WORKER__MNEMONIC || "//Alice",
       blockSecs: 6,
       reportBlocks: 10,
     },
@@ -43,7 +43,6 @@ const options = {
     init: Teaclave.init,
     args: {
       baseURL: "http://127.0.0.1:2121",
-      timeout: 10000,
       headers: {
         "Content-Type": "application/json",
       },

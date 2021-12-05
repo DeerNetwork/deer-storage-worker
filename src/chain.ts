@@ -82,7 +82,7 @@ export class Service {
     ]);
     if (maybeStoreFile.isNone) return;
     const storeFile = maybeStoreFile.unwrap();
-    const fileOrder = maybeFileOrder.unwrap();
+    const fileOrder = maybeFileOrder.unwrapOrDefault();
     return {
       addedAt: storeFile.addedAt.toNumber(),
       reserved: storeFile.reserved.toBn().toString(),
@@ -334,7 +334,6 @@ export class Service {
   }
 
   private async waitSynced() {
-    const halfBlockMs = this.blockSecs * 500;
     while (true) {
       try {
         const [{ isSyncing }, header] = await Promise.all([
@@ -342,10 +341,10 @@ export class Service {
           this.api.rpc.chain.getHeader(),
         ]);
         if (isSyncing.isFalse) {
-          await sleep(halfBlockMs);
+          await sleep(1000);
           const header2 = await this.api.rpc.chain.getHeader();
           if (header2.number.eq(header.number)) {
-            await sleep(this.blockSecs);
+            await sleep(this.blockSecs * 1000);
             const header3 = await this.api.rpc.chain.getHeader();
             if (header3.number.toNumber() > header.number.toNumber()) {
               this.latestBlockNum = header3.number.toNumber();
@@ -357,7 +356,7 @@ export class Service {
         this.latestBlockNum = header.number.toNumber();
       } catch {}
       srvs.logger.info(`Syncing block at ${this.latestBlockNum}, waiting`);
-      await sleep(halfBlockMs);
+      await sleep(this.blockSecs * 500);
     }
   }
 }

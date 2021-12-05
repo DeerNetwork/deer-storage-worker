@@ -297,7 +297,7 @@ export class Service {
         const cid = key.toHuman()[0];
         await this.enqueueAddFile(cid);
       }
-      this.iterKey = _.last(keys).toString();
+      if (keys.length > 0) this.iterKey = _.last(keys).toString();
     } catch (err) {
       srvs.logger.error(`Fail to iter chain files, ${err.message}`);
     }

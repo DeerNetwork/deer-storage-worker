@@ -11,7 +11,6 @@ export const SPEED = 1048576; // 1M/s
 
 export interface Args {
   baseURL: string;
-  timeout: number;
   headers: AxiosRequestHeaders;
 }
 
@@ -31,7 +30,6 @@ export class Service {
     this.args = option.args;
     this.api = axios.create({
       baseURL: this.args.baseURL,
-      timeout: this.args.timeout,
       headers: this.args.headers,
       validateStatus: () => true,
     });
@@ -72,6 +70,7 @@ export class Service {
       this.summarySize += size;
       this.summaryTime += Date.now() - now;
       this.speed = this.summarySize / this.summaryTime / 1000 || SPEED;
+      this.currentFile = null;
       return size;
     } catch (err) {
       this.currentFile = null;
@@ -136,7 +135,7 @@ export class Service {
   ): Promise<T> {
     try {
       const res = await rpc();
-      srvs.logger.debug(`teaclave.${name} got ${JSON.stringify(res.data)}`);
+      srvs.logger.debug(`teaclave.${name}: ${JSON.stringify(res.data)}`);
       if (res.status == 200) {
         return res.data;
       }
