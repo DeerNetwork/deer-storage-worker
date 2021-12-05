@@ -312,7 +312,12 @@ export class Service {
       roundReported: reportedAt !== 0 && reportedAt >= currentRoundAt,
       planReportAt: planReportAt,
     };
-    srvs.logger.info(`Update report state`, this.reportState);
+    srvs.logger.info(`Update report state`, {
+      rid: this.reportState.rid,
+      planReportAt,
+      reportedAt,
+      now: this.latestBlockNum,
+    });
     return this.reportState;
   }
 
