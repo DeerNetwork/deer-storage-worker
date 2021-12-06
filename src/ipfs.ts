@@ -12,6 +12,7 @@ export type Option<S extends Service> = ServiceOption<Args, S>;
 
 export interface Args {
   url: string;
+  numProvs: number;
 }
 
 export const TIMEOUT = 1000;
@@ -117,10 +118,14 @@ export class Service {
   public async existProv(cid: string): Promise<boolean> {
     const providers = this.client.dht.findProvs(cid as any, {
       timeout: TIMEOUT * 3,
-      numProviders: 1,
+      numProviders: this.args.numProvs,
     });
+    let count = 0;
     for await (const _ of providers) { // eslint-disable-line
-      return true;
+      count += 1;
+      if (count >= this.args.numProvs) {
+        return true;
+      }
     }
     return false;
   }
