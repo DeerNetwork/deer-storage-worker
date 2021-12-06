@@ -35,11 +35,15 @@ async function createCmd() {
       console.log(tx.toHuman());
       process.exit();
     },
-    async addFile(cid) {
+    async addFile(cid, size) {
       await api.isReady;
-      const info = await ipfs.object.stat(cid);
+      size = parseInt(size);
+      if (!size) {
+        const info = await ipfs.object.stat(cid);
+        size = info.CumulativeSize;
+      }
       const tx = await api.tx.fileStorage
-        .store(cid, info.CumulativeSize, 1e12)
+        .store(cid, size, 1e12)
         .signAndSend(account);
       console.log(tx.toHuman());
       process.exit();
