@@ -15,8 +15,7 @@ export interface Args {
   numProvs: number;
 }
 
-export const TIMEOUT = 1000;
-export const SPEED = 262144; // 256k/s
+export const SPEED = 131072; // 128k/s
 
 export class Service {
   public health = true;
@@ -41,7 +40,7 @@ export class Service {
   public async pinAdd(cid: string, fileSize: number): Promise<boolean> {
     try {
       srvs.logger.debug("ipfs.pinAdd", { cid });
-      const timeout = (fileSize / this.speed) * 1000;
+      const timeout = Math.max((fileSize / this.speed) * 1000, 10000);
       const now = Date.now();
       this.currentFile = { cid, beginAt: now, endAt: now + timeout, fileSize };
       await this.client.pin.add(cid, { timeout: 1.2 * timeout });
@@ -60,7 +59,7 @@ export class Service {
   public async pinRemove(cid: string): Promise<boolean> {
     try {
       srvs.logger.debug("ipfs.pinRemove", { cid });
-      await this.client.pin.rm(cid);
+      await this.client.pin.rm(cid, { timeout: 10000 });
     } catch (err) {
       if (/not pinned/.test(err.message)) {
         return true;
@@ -74,7 +73,7 @@ export class Service {
       const list = [];
       for await (const { cid } of this.client.pin.ls({
         type: "recursive",
-        timeout: TIMEOUT,
+        timeout: 3000,
       })) {
         list.push(cid.toString());
       }
@@ -89,7 +88,7 @@ export class Service {
       for await (const { cid: cidObj } of this.client.pin.ls({
         type: "recursive",
         paths: cid,
-        timeout: TIMEOUT,
+        timeout: 3000,
       })) {
         if (cidObj.toString() === cid) {
           return true;
@@ -107,7 +106,7 @@ export class Service {
   public async objectStat(cid: string): Promise<StatResult> {
     try {
       return await this.client.object.stat(cid as any, {
-        timeout: TIMEOUT,
+        timeout: 3000,
       });
     } catch (err) {
       if (/not found/.test(err.message)) {
@@ -120,7 +119,7 @@ export class Service {
   public async existProv(cid: string): Promise<boolean> {
     srvs.logger.debug("ipfs.existProv", { cid });
     const providers = this.client.dht.findProvs(cid as any, {
-      timeout: TIMEOUT * 3,
+      timeout: 10000,
       numProviders: this.args.numProvs,
     });
     let count = 0;
