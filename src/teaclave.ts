@@ -36,7 +36,9 @@ export class Service {
   }
 
   public async system(): Promise<SystemRes> {
-    return this.wrapRpc("system", () => this.api.get("/system"));
+    return this.wrapRpc("system", () =>
+      this.api.get("/system", { timeout: 10000 })
+    );
   }
 
   public async attest(): Promise<AttestRes> {
@@ -47,23 +49,33 @@ export class Service {
 
   public async preparePeport(files: string[]): Promise<PrepareReportRes> {
     return this.wrapRpc("preparePeport", () =>
-      this.api.post("/report/prepare", { files })
+      this.api.post(
+        "/report/prepare",
+        { files },
+        {
+          timeout: 30000,
+        }
+      )
     );
   }
 
   public async commitReport(rid: number): Promise<any> {
     return this.wrapRpc("commitReport", () =>
-      this.api.post(`/report/commit/${rid}`)
+      this.api.post(`/report/commit/${rid}`, {
+        timeout: 30000,
+      })
     );
   }
 
   public async addFile(cid: string, fileSize: number): Promise<number> {
     try {
-      const time = (fileSize / this.speed) * 1000;
+      const timeout = (fileSize / this.speed) * 1000;
       const now = Date.now();
-      this.currentFile = { cid, beginAt: now, endAt: now + time, fileSize };
+      this.currentFile = { cid, beginAt: now, endAt: now + timeout, fileSize };
       const res = await this.wrapRpc<any>("addFile", () =>
-        this.api.post(`/files/${cid}`)
+        this.api.post(`/files/${cid}`, {
+          timeout: Math.max(1.5 * timeout, 60000),
+        })
       );
       const { size } = res;
       this.count += 1;
@@ -80,7 +92,11 @@ export class Service {
 
   public async delFile(cid: string): Promise<void> {
     try {
-      this.wrapRpc("delFile", () => this.api.delete(`/files/${cid}`));
+      this.wrapRpc("delFile", () =>
+        this.api.delete(`/files/${cid}`, {
+          timeout: 10000,
+        })
+      );
       return;
     } catch (err) {
       if (/File not found/.test(err)) return;
@@ -92,7 +108,9 @@ export class Service {
     try {
       const [, fileSize, committed] = await this.wrapRpc<
         [string, number, boolean]
-      >("existFile", () => this.api.get(`/files/${cid}/status`));
+      >("existFile", () =>
+        this.api.get(`/files/${cid}/status`, { timeout: 5000 })
+      );
       return { cid, fileSize, committed };
     } catch (err) {
       if (/File does not exist/.test(err)) return null;
@@ -103,7 +121,10 @@ export class Service {
   public async listFiles(): Promise<TeaFile[]> {
     const list = await this.wrapRpc<[string, number, boolean][]>(
       "listFiles",
-      () => this.api.get("/files")
+      () =>
+        this.api.get("/files", {
+          timeout: 30000,
+        })
     );
     return list.map(([cid, fileSize, committed]) => {
       return { cid, fileSize, committed };
