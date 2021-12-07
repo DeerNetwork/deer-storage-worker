@@ -49,25 +49,56 @@ export class Service {
   }
 
   public async reportWork() {
+    let currentAddFiles: string[];
+    const invalidAddFiles: string[] = [];
+    const addFiles = this.addFiles.slice();
+    const settleFiles = this.settleFiles.slice();
     try {
       srvs.logger.debug("Starging report work");
       await this.commitReport();
-      await Promise.all([this.checkAddFiles(), this.checkSettleFiles()]);
+      const [addFileValidates, settleFileValidates] = await Promise.all([
+        srvs.chain.batchValidateCids(addFiles, "addFiles"),
+        srvs.chain.batchValidateCids(settleFiles, "settleFiles"),
+      ]);
+      const validAddFiles: string[] = [];
+      addFileValidates.forEach((ok, i) => {
+        if (ok) {
+          validAddFiles.push(addFiles[i]);
+        } else {
+          invalidAddFiles.push(addFiles[i]);
+        }
+      });
+      const validSettleFiles: string[] = [];
+      const invalidSettleFiles: string[] = [];
+      settleFileValidates.forEach((ok, i) => {
+        if (ok) {
+          validSettleFiles.push(settleFiles[i]);
+        } else {
+          invalidSettleFiles.push(settleFiles[i]);
+        }
+      });
       const { maxReportFiles } = srvs.chain.constants;
-      const addFiles = this.addFiles.slice();
-      const settleFiles = this.settleFiles.slice();
-      const currentAddFiles = addFiles.splice(0, maxReportFiles);
-      const currentSettleFiles = settleFiles.splice(0, maxReportFiles);
+      currentAddFiles = validAddFiles.splice(0, maxReportFiles);
+      const currentSettleFiles = validSettleFiles.splice(0, maxReportFiles);
       const reportData = await srvs.teaclave.preparePeport(currentAddFiles);
       await srvs.chain.reportWork(this.machine, reportData, currentSettleFiles);
-      this.addFiles = addFiles;
-      this.settleFiles = settleFiles;
-      for (const cid of currentAddFiles) {
-        await this.checkTeaFile(cid);
-      }
+      currentAddFiles.forEach((cid) => {
+        const idx = this.addFiles.findIndex((v) => v === cid);
+        if (idx > -1) this.addFiles.splice(idx, 1);
+      });
+      [...currentSettleFiles, ...invalidSettleFiles].forEach((cid) => {
+        const idx = this.settleFiles.findIndex((v) => v === cid);
+        if (idx > -1) this.settleFiles.splice(idx, 1);
+      });
       srvs.logger.info("Report work successed");
     } catch (err) {
       srvs.logger.error(`Fail to report work, ${err.message}`);
+    }
+    invalidAddFiles.forEach((cid) => {
+      this.enqueueDelFile(cid);
+    });
+    for (const cid of currentAddFiles) {
+      await this.checkTeaFile(cid);
     }
   }
 
@@ -357,50 +388,6 @@ export class Service {
       }
     } catch (err) {
       srvs.logger.error(`Check commit files throws ${err.message}`);
-    }
-  }
-
-  private async checkAddFiles() {
-    srvs.logger.debug("Check add files", {
-      addFiles: this.addFiles,
-    });
-    try {
-      const result = [];
-      for (const cid of this.addFiles) {
-        const file = await this.worthAddFile(cid);
-        if (!file) {
-          this.enqueueDelFile(cid);
-          continue;
-        }
-        if (file.existReplica) continue;
-        result.push(cid);
-      }
-      this.addFiles = result;
-    } catch (err) {
-      srvs.logger.error(`Check add files throws ${err.message}`);
-    }
-  }
-
-  private async checkSettleFiles() {
-    srvs.logger.debug("Check settle files", {
-      settleFiles: this.settleFiles,
-    });
-    try {
-      const result = [];
-      const { latestBlockNum } = srvs.chain;
-      for (const cid of this.settleFiles) {
-        const file = await srvs.chain.getFile(cid);
-        if (!file) {
-          this.enqueueDelFile(cid);
-          continue;
-        }
-        if (!file.existReplica) continue;
-        if (file.expireAt > latestBlockNum) continue;
-        result.push(cid);
-      }
-      this.settleFiles = result;
-    } catch (err) {
-      srvs.logger.error(`Check add files throws ${err.message}`);
     }
   }
 

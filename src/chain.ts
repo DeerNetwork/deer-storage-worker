@@ -94,6 +94,34 @@ export class Service {
     };
   }
 
+  public async batchValidateCids(
+    cids: string[],
+    kind: "addFiles" | "settleFiles"
+  ): Promise<boolean[]> {
+    if (cids.length === 0) return [];
+    const maybeFileOrders = await this.api.query.fileStorage.fileOrders.multi(
+      cids
+    );
+    const result: boolean[] = [];
+    const { maxFileReplicas } = this.constants;
+    for (let i = 0; i < cids.length; i++) {
+      const fileOrder = maybeFileOrders[i].unwrapOrDefault();
+      if (kind === "addFiles") {
+        result.push(
+          fileOrder.replicas.length === 0 ||
+            (!fileOrder.replicas.find((v) => v.eq(this.walletAddress)) &&
+              fileOrder.replicas.length < maxFileReplicas)
+        );
+      } else if (kind === "settleFiles") {
+        result.push(
+          !!fileOrder.replicas.find((v) => v.eq(this.walletAddress)) &&
+            fileOrder.expireAt.toNumber() < this.latestBlockNum
+        );
+      }
+    }
+    return result;
+  }
+
   public async getStash() {
     return await this.api.query.fileStorage.stashs(this.walletAddress);
   }
@@ -298,11 +326,11 @@ export class Service {
         : maybePlanReportAt;
 
     if (maybeNode.isNone) {
-      planReportAt = this.latestBlockNum + _.random(10, 20);
+      planReportAt = this.latestBlockNum + _.random(20, 40);
     } else {
       if (planReportAt <= currentRoundAt && reportedAt < currentRoundAt) {
         planReportAt = Math.min(
-          this.latestBlockNum + _.random(10, 20),
+          this.latestBlockNum + _.random(20, 40),
           nextRoundAt - reportBlocks
         );
       } else if (
