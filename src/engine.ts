@@ -77,6 +77,8 @@ export class Service {
     if (system.cursor_committed < rid) {
       await srvs.teaclave.commitReport(rid);
       await this.checkCommittedFiles();
+    } else {
+      srvs.logger.debug("Skip commit report");
     }
   }
 
@@ -359,6 +361,9 @@ export class Service {
   }
 
   private async checkAddFiles() {
+    srvs.logger.debug("Check add files", {
+      addFiles: this.addFiles,
+    });
     try {
       const result = [];
       for (const cid of this.addFiles) {
@@ -377,6 +382,9 @@ export class Service {
   }
 
   private async checkSettleFiles() {
+    srvs.logger.debug("Check settle files", {
+      settleFiles: this.settleFiles,
+    });
     try {
       const result = [];
       const { latestBlockNum } = srvs.chain;
