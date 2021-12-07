@@ -212,6 +212,9 @@ export class Service {
   private async listenBlocks() {
     await this.api.rpc.chain.subscribeNewHeads(async (header) => {
       this.latestBlockNum = header.number.toNumber();
+      srvs.logger.debug("Listen new block", {
+        now: this.latestBlockNum,
+      });
       if (this.latestBlockNum % (this.constants.roundDuration / 10) === 0) {
         this.updateReportState();
       }
@@ -236,19 +239,34 @@ export class Service {
           event: { data, method },
         } = ev;
         if (method === "StoreFileSubmitted") {
+          srvs.logger.debug("Listen event StoreFileSubmitted", {
+            event: ev.toHuman(),
+          });
           const cid = hex2str(data[0].toString());
           await srvs.engine.enqueueAddFile(cid);
         } else if (method === "StoreFileSettledIncomplete") {
+          srvs.logger.debug("Listen event StoreFileSettledIncomplete", {
+            event: ev.toHuman(),
+          });
           const cid = hex2str(data[0].toString());
           await srvs.engine.enqueueAddFile(cid);
         } else if (method === "StoreFileRemoved") {
+          srvs.logger.debug("Listen event StoreFileRemoved", {
+            event: ev.toHuman(),
+          });
           const cid = hex2str(data[0].toString());
           await srvs.engine.enqueueDelFile(cid);
         } else if (method === "FileForceDeleted") {
+          srvs.logger.debug("Listen event FileForceDeleted", {
+            event: ev.toHuman(),
+          });
           const cid = hex2str(data[0].toString());
           await srvs.engine.enqueueDelFile(cid);
         } else if (method === "NodeReported") {
           if (data[0].eq(this.walletAddress)) {
+            srvs.logger.debug("Listen event NodeReported", {
+              event: ev.toHuman(),
+            });
             await this.updateReportState();
             await srvs.engine.commitReport();
           }

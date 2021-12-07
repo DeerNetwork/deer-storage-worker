@@ -40,6 +40,7 @@ export class Service {
 
   public async pinAdd(cid: string, fileSize: number): Promise<boolean> {
     try {
+      srvs.logger.debug("ipfs.pinAdd", { cid });
       const timeout = (fileSize / this.speed) * 1000;
       const now = Date.now();
       this.currentFile = { cid, beginAt: now, endAt: now + timeout, fileSize };
@@ -58,6 +59,7 @@ export class Service {
 
   public async pinRemove(cid: string): Promise<boolean> {
     try {
+      srvs.logger.debug("ipfs.pinRemove", { cid });
       await this.client.pin.rm(cid);
     } catch (err) {
       if (/not pinned/.test(err.message)) {
@@ -116,6 +118,7 @@ export class Service {
   }
 
   public async existProv(cid: string): Promise<boolean> {
+    srvs.logger.debug("ipfs.existProv", { cid });
     const providers = this.client.dht.findProvs(cid as any, {
       timeout: TIMEOUT * 3,
       numProviders: this.args.numProvs,
@@ -132,6 +135,7 @@ export class Service {
 
   public async checkHealth() {
     try {
+      srvs.logger.debug("ipfs.checkHealth");
       await this.client.stats.bitswap();
       this.health = true;
     } catch (err) {

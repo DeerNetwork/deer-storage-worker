@@ -50,6 +50,7 @@ export class Service {
 
   public async reportWork() {
     try {
+      srvs.logger.debug("Starging report work");
       await this.commitReport();
       await Promise.all([this.checkAddFiles(), this.checkSettleFiles()]);
       const { maxReportFiles } = srvs.chain.constants;
@@ -64,9 +65,9 @@ export class Service {
       for (const cid of currentAddFiles) {
         await this.checkTeaFile(cid);
       }
-      srvs.logger.info("Report works successed");
+      srvs.logger.info("Report work successed");
     } catch (err) {
-      srvs.logger.error(`Fail to report works, ${err.message}`);
+      srvs.logger.error(`Fail to report work, ${err.message}`);
     }
   }
 
