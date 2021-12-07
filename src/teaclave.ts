@@ -48,6 +48,7 @@ export class Service {
   }
 
   public async preparePeport(files: string[]): Promise<PrepareReportRes> {
+    srvs.logger.debug(`teaclave.preparePeport: ${files}`);
     return this.wrapRpc("preparePeport", () =>
       this.api.post(
         "/report/prepare",
@@ -60,6 +61,7 @@ export class Service {
   }
 
   public async commitReport(rid: number): Promise<any> {
+    srvs.logger.debug(`teaclave.preparePeport: ${rid}`);
     return this.wrapRpc("commitReport", () =>
       this.api.post(`/report/commit/${rid}`, {
         timeout: 30000,
