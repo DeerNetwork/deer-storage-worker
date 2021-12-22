@@ -130,6 +130,13 @@ export class Service {
     return await this.api.query.fileStorage.registers(machine);
   }
 
+  public async getRid() {
+    const node = (
+      await this.api.query.fileStorage.nodes(this.walletAddress)
+    ).unwrapOrDefault();
+    return node.rid.toNumber();
+  }
+
   public async register(data: AttestRes) {
     const tx = await this.api.tx.fileStorage.register(
       formatHexArr(data.machine_id),
@@ -295,8 +302,7 @@ export class Service {
             srvs.logger.debug("Listen event NodeReported", {
               event: ev.toHuman(),
             });
-            await this.updateReportState();
-            await srvs.engine.commitReport();
+            await srvs.engine.maybeCommitReport();
           }
         }
       }

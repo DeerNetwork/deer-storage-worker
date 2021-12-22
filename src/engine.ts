@@ -55,7 +55,7 @@ export class Service {
     const settleFiles = this.settleFiles.slice();
     try {
       srvs.logger.debug("Starging report work");
-      await this.commitReport();
+      await this.maybeCommitReport();
       const [addFileValidates, settleFileValidates] = await Promise.all([
         srvs.chain.batchValidateCids(addFiles, "addFiles"),
         srvs.chain.batchValidateCids(settleFiles, "settleFiles"),
@@ -102,14 +102,16 @@ export class Service {
     }
   }
 
-  public async commitReport() {
-    const { rid } = srvs.chain.reportState;
-    const system = await srvs.teaclave.system();
+  public async maybeCommitReport() {
+    const [rid, system] = await Promise.all([
+      srvs.chain.getRid(),
+      srvs.teaclave.system(),
+    ]);
     if (system.cursor_committed < rid) {
       await srvs.teaclave.commitReport(rid);
       await this.checkCommittedFiles();
     } else {
-      srvs.logger.debug("Skip commit report");
+      srvs.logger.debug("No need to commit report");
     }
   }
 
