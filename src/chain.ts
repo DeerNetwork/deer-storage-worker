@@ -6,7 +6,7 @@ import {
   createInitFn,
 } from "use-services";
 import { ApiPromise, WsProvider } from "@polkadot/api";
-import { typesBundleForPolkadot } from "@deernetwork/type-definitions";
+import { typesBundle } from "@deernetwork/type-definitions";
 import { SubmittableExtrinsic } from "@polkadot/api/promise/types";
 import { DispatchError } from "@polkadot/types/interfaces";
 import * as _ from "lodash";
@@ -50,7 +50,7 @@ export class Service {
     this.provider = new WsProvider(this.args.url);
     this.api = new ApiPromise({
       provider: this.provider,
-      typesBundle: typesBundleForPolkadot,
+      typesBundle,
     });
     await Promise.all([this.api.isReady, cryptoWaitReady()]);
     const keyring = new Keyring({ type: "sr25519" });
@@ -225,9 +225,9 @@ export class Service {
                 const error = this.api.registry.findMetaError(
                   new Uint8Array([mod.index.toNumber(), mod.error.toNumber()])
                 );
-                const message = `Transaction throw ${error.section}.${
-                  error.name
-                }, ${error.docs.join("")}`;
+                const kind = `${error.section}.${error.name}`;
+                const doc = error.docs.join("");
+                const message = `Transaction throw ${kind}, ${doc}`;
                 emitter.emit("fatal", message);
                 throw new Error(message);
               } else {
@@ -302,6 +302,7 @@ export class Service {
             srvs.logger.debug("Listen event NodeReported", {
               event: ev.toHuman(),
             });
+            await this.updateReportState();
             await srvs.engine.maybeCommitReport();
           }
         }
