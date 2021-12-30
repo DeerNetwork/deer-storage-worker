@@ -37,7 +37,7 @@ const options = {
     init: Ipfs.init,
     args: {
       url: "http://127.0.0.1:5001",
-      numProvs: 2,
+      numProvs: parseInt(process.env.WORKER__IPFS__NUMPROVS) || 2,
     },
   } as Ipfs.Option<Ipfs.Service>,
   teaclave: {
