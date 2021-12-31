@@ -72,6 +72,8 @@ export class Service {
   }
 
   public async addFile(cid: string, fileSize: number): Promise<number> {
+    const exist = await this.existFile(cid);
+    if (exist) return exist.fileSize;
     try {
       const timeout = this.args.baseTimeout + (fileSize / this.speed) * 1000;
       const before = Date.now();
@@ -96,11 +98,11 @@ export class Service {
       if (elapse >= 1) {
         this.speed = _.clamp(fileSize / elapse, MIN_SPEED, MAX_SPEED);
       }
-      this.currentFile = null;
       return size;
     } catch (err) {
-      this.currentFile = null;
       throw err;
+    } finally {
+      this.currentFile = null;
     }
   }
 
@@ -120,16 +122,20 @@ export class Service {
     }
   }
 
-  public async getFile(cid: string): Promise<TeaFile> {
+  public async existFile(cid: string): Promise<TeaFile> {
     try {
       const [, fileSize, committed] = await this.wrapRpc<
         [string, number, boolean]
       >("existFile", () =>
         this.api.get(`/files/${cid}/status`, { timeout: 10000 })
       );
+      srvs.logger.debug(`teaclave.existFile`, { cid, exist: true });
       return { cid, fileSize, committed };
     } catch (err) {
-      if (/File does not exist/.test(err)) return null;
+      if (/File does not exist/.test(err)) {
+        srvs.logger.debug(`teaclave.existFile`, { cid, exist: false });
+        return null;
+      }
       throw err;
     }
   }

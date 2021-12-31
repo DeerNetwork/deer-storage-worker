@@ -104,7 +104,7 @@ export class Service {
       this.enqueueDelFile(cid);
     });
     for (const cid of currentAddFiles) {
-      const teaFile = await srvs.teaclave.getFile(cid);
+      const teaFile = await srvs.teaclave.existFile(cid);
       if (!teaFile) continue;
       await this.checkTeaFile(teaFile);
     }
