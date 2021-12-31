@@ -275,20 +275,23 @@ export class Service {
         const {
           event: { data, method },
         } = ev;
-        if (method === "StoreFileSubmitted") {
-          srvs.logger.debug("Listen event StoreFileSubmitted", {
+        if (method === "FileAdded") {
+          srvs.logger.debug("Listen event FileAdded", {
             event: ev.toHuman(),
           });
           const cid = hex2str(data[0].toString());
           await srvs.engine.enqueueAddFile(cid);
-        } else if (method === "StoreFileSettledIncomplete") {
-          srvs.logger.debug("Listen event StoreFileSettledIncomplete", {
+        } else if (method === "FileStored") {
+          srvs.logger.debug("Listen event FileStored", {
             event: ev.toHuman(),
           });
           const cid = hex2str(data[0].toString());
-          await srvs.engine.enqueueAddFile(cid);
-        } else if (method === "StoreFileRemoved") {
-          srvs.logger.debug("Listen event StoreFileRemoved", {
+          const numReplicas = (data[1] as unknown as u32).toNumber();
+          if (numReplicas < this.constants.maxFileReplicas) {
+            await srvs.engine.enqueueAddFile(cid);
+          }
+        } else if (method === "FileDeleted") {
+          srvs.logger.debug("Listen event FileDeleted", {
             event: ev.toHuman(),
           });
           const cid = hex2str(data[0].toString());

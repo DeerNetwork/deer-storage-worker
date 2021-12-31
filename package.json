@@ -1,6 +1,6 @@
 {
   "name": "@deernetwork/deer-storage-worker",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "Storage worker for Deer Network as bridge between chain and storage teaclave.",
   "license": "MIT",
   "publishConfig": {
