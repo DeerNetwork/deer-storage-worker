@@ -41,6 +41,7 @@ export class Service {
       this.args.basePinTimeout * 60000 + (fileSize / 1024 / 200) * 1000;
     const run = async () => {
       try {
+        srvs.logger.debug("ipfs.pinAdd", { cid });
         await this.client.pin.add(cid, { timeout, signal });
         return true;
       } catch (err) {

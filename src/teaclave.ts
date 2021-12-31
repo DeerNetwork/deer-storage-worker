@@ -43,6 +43,7 @@ export class Service {
   }
 
   public async attest(): Promise<AttestRes> {
+    srvs.logger.debug(`teaclave.attest`);
     return this.wrapRpc("attest", () =>
       this.api.get("/attest", { timeout: 60000 })
     );
@@ -62,7 +63,7 @@ export class Service {
   }
 
   public async commitReport(rid: number): Promise<any> {
-    srvs.logger.debug(`teaclave.preparePeport: ${rid}`);
+    srvs.logger.debug(`teaclave.commitReport: ${rid}`);
     return this.wrapRpc("commitReport", () =>
       this.api.post(`/report/commit/${rid}`, {
         timeout: 30000,
@@ -80,6 +81,7 @@ export class Service {
         endAt: before + timeout,
         fileSize,
       };
+      srvs.logger.debug(`teaclave.addFile: ${cid}`);
       const res = await this.wrapRpc<any>("addFile", () =>
         this.api.post(`/files/${cid}`)
       );
@@ -101,6 +103,7 @@ export class Service {
 
   public async delFile(cid: string): Promise<void> {
     try {
+      srvs.logger.debug(`teaclave.delFile: ${cid}`);
       this.wrapRpc("delFile", () =>
         this.api.delete(`/files/${cid}`, {
           timeout: 10000,
@@ -170,7 +173,6 @@ export class Service {
   ): Promise<T> {
     try {
       const res = await rpc();
-      srvs.logger.debug(`teaclave.${name}: ${JSON.stringify(res.data)}`);
       if (res.status == 200) {
         return res.data;
       }
