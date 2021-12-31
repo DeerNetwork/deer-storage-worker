@@ -41,8 +41,9 @@ export class Service {
       this.args.basePinTimeout * 60000 + (fileSize / 1024 / 200) * 1000;
     const run = async () => {
       try {
-        srvs.logger.debug("ipfs.pinAdd", { cid });
+        srvs.logger.debug("ipfs.pinAdd.do", { cid });
         await this.client.pin.add(cid, { timeout, signal });
+        srvs.logger.debug("ipfs.pinAdd.done", { cid });
         return true;
       } catch (err) {
         throw new Error(`ipfs.pinAdd ${cid}, ${err.message}`);
@@ -53,8 +54,9 @@ export class Service {
 
   public async pinRemove(cid: string): Promise<boolean> {
     try {
-      srvs.logger.debug("ipfs.pinRemove", { cid });
+      srvs.logger.debug("ipfs.pinRemove.do", { cid });
       await this.client.pin.rm(cid, { timeout: 10000 });
+      srvs.logger.debug("ipfs.pinRemove.done", { cid });
     } catch (err) {
       if (/not pinned/.test(err.message)) {
         return true;
@@ -80,6 +82,7 @@ export class Service {
 
   public async pinExist(cid: string): Promise<boolean> {
     try {
+      srvs.logger.debug("ipfs.pinExist", { cid });
       for await (const { cid: cidObj } of this.client.pin.ls({
         type: "recursive",
         paths: cid,
@@ -112,18 +115,20 @@ export class Service {
   }
 
   public async existProv(cid: string): Promise<boolean> {
-    srvs.logger.debug("ipfs.existProv", { cid });
+    srvs.logger.debug("ipfs.existProv.do", { cid });
     const providers = this.client.dht.findProvs(cid as any, {
-      timeout: 5000,
+      timeout: 10000,
       numProviders: this.args.numProvs,
     });
     let count = 0;
     for await (const _ of providers) { // eslint-disable-line
       count += 1;
       if (count >= this.args.numProvs) {
+        srvs.logger.debug("ipfs.existProv.done", { cid, success: true });
         return true;
       }
     }
+    srvs.logger.debug("ipfs.existProv.done", { cid, success: false });
     return false;
   }
 
