@@ -286,10 +286,7 @@ export class Service {
             event: ev.toHuman(),
           });
           const cid = hex2str(data[0].toString());
-          const numReplicas = (data[1] as unknown as u32).toNumber();
-          if (numReplicas < this.constants.maxFileReplicas) {
-            await srvs.engine.enqueueAddFile(cid);
-          }
+          await srvs.engine.enqueueAddFile(cid);
         } else if (method === "FileDeleted") {
           srvs.logger.debug("Listen event FileDeleted", {
             event: ev.toHuman(),
