@@ -162,7 +162,7 @@ export class Service {
         space: this.space,
       });
     } catch (err) {
-      srvs.logger.error(`Teacalve cheak health throws ${err.message}`);
+      srvs.logger.error(`Check tea health throws ${err.message}`);
       this.health = false;
     }
   }

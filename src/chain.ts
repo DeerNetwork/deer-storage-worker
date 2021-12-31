@@ -180,7 +180,7 @@ export class Service {
         health: this.health,
       });
     } catch (err) {
-      srvs.logger.error(`Chain cheak health throws ${err.message}`);
+      srvs.logger.error(`Check chain health throws ${err.message}`);
       this.health = false;
     }
   }

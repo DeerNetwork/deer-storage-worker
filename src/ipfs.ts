@@ -131,9 +131,9 @@ export class Service {
     try {
       await this.client.stats.bitswap();
       this.health = true;
-      srvs.logger.debug("ipfs.checkHealth", { health: this.health });
+      srvs.logger.debug("Check ipfs health", { health: this.health });
     } catch (err) {
-      srvs.logger.error(`Ipfs cheak health throws ${err.message}`);
+      srvs.logger.error(`Cheak ipfs health throws ${err.message}`);
       this.health = false;
     }
   }
