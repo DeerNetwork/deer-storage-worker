@@ -4,6 +4,7 @@ import {
   INIT_KEY,
   createInitFn,
 } from "use-services";
+import { AbortController } from "native-abort-controller";
 import { create, IPFSHTTPClient } from "ipfs-http-client";
 import { StatResult } from "ipfs-core-types/src/object";
 import { srvs } from "./services";

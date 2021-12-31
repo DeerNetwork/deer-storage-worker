@@ -5,6 +5,7 @@ import {
   STOP_KEY,
 } from "use-services";
 import _ from "lodash";
+import { AbortController } from "native-abort-controller";
 import PQueue from "p-queue";
 import { srvs, emitter } from "./services";
 import { sleep } from "./utils";
