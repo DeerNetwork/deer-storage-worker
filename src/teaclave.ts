@@ -4,14 +4,18 @@ import axios, {
   AxiosRequestHeaders,
   AxiosResponse,
 } from "axios";
+import * as _ from "lodash";
 import { srvs } from "./services";
 
 export type Option<S extends Service> = ServiceOption<Args, S>;
 export const SPEED = 1048576; // 1M/s
+export const MIN_SPEED = 65536; // 64K/s
+export const MAX_SPEED = 109051904; // 1G/s
 
 export interface Args {
   baseURL: string;
   headers: AxiosRequestHeaders;
+  baseTimeout: number;
 }
 
 export class Service {
@@ -21,9 +25,6 @@ export class Service {
   private currentFile: CurrentFile;
   private speed = SPEED;
   private space = Infinity;
-  private count = 0;
-  private summaryTime = 0;
-  private summarySize = 0;
   private api: AxiosInstance;
 
   public constructor(option: InitOption<Args, Service>) {
@@ -71,19 +72,25 @@ export class Service {
 
   public async addFile(cid: string, fileSize: number): Promise<number> {
     try {
-      const timeout = (fileSize / this.speed) * 1000;
-      const now = Date.now();
-      this.currentFile = { cid, beginAt: now, endAt: now + timeout, fileSize };
+      const timeout = this.args.baseTimeout + (fileSize / this.speed) * 1000;
+      const before = Date.now();
+      this.currentFile = {
+        cid,
+        beginAt: before,
+        endAt: before + timeout,
+        fileSize,
+      };
       const res = await this.wrapRpc<any>("addFile", () =>
-        this.api.post(`/files/${cid}`, {
-          timeout: Math.max(1.5 * timeout, 60000),
-        })
+        this.api.post(`/files/${cid}`)
       );
       const { size } = res;
-      this.count += 1;
-      this.summarySize += size;
-      this.summaryTime += Date.now() - now;
-      this.speed = this.summarySize / this.summaryTime / 1000 || SPEED;
+      const elapse = Math.max(
+        (Date.now() - before - this.args.baseTimeout) / 1000,
+        0
+      );
+      if (elapse >= 1) {
+        this.speed = _.clamp(fileSize / elapse, MIN_SPEED, MAX_SPEED);
+      }
       this.currentFile = null;
       return size;
     } catch (err) {
@@ -143,16 +150,14 @@ export class Service {
 
   public async checkHealth() {
     try {
-      srvs.logger.debug("Check tea health", {
-        speed: this.speed,
-        space: this.space,
-        count: this.count,
-        summaryTime: this.summaryTime,
-        summarySize: this.summarySize,
-      });
       const system = await this.system();
       this.space = system.rsd_size;
       this.health = true;
+      srvs.logger.debug("Check tea health", {
+        health: this.health,
+        speed: this.speed,
+        space: this.space,
+      });
     } catch (err) {
       srvs.logger.error(`Teacalve cheak health throws ${err.message}`);
       this.health = false;

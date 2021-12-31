@@ -49,6 +49,7 @@ const options = {
       headers: {
         "Content-Type": "application/json",
       },
+      baseTimeout: 1000,
     },
   } as Teaclave.Option<Teaclave.Service>,
   engine: {

@@ -173,11 +173,12 @@ export class Service {
 
   public async checkHealth() {
     try {
-      srvs.logger.debug("Check chain health", {
-        blockNum: this.latestBlockNum,
-      });
       await this.api.rpc.system.syncState();
       this.health = true;
+      srvs.logger.debug("Check chain health", {
+        blockNum: this.latestBlockNum,
+        health: this.health,
+      });
     } catch (err) {
       srvs.logger.error(`Chain cheak health throws ${err.message}`);
       this.health = false;

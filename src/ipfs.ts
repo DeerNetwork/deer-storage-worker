@@ -128,9 +128,9 @@ export class Service {
 
   public async checkHealth() {
     try {
-      srvs.logger.debug("ipfs.checkHealth");
       await this.client.stats.bitswap();
       this.health = true;
+      srvs.logger.debug("ipfs.checkHealth", { health: this.health });
     } catch (err) {
       srvs.logger.error(`Ipfs cheak health throws ${err.message}`);
       this.health = false;
