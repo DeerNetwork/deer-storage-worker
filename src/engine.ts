@@ -5,8 +5,10 @@ import {
   STOP_KEY,
 } from "use-services";
 import _ from "lodash";
+import PQueue from "p-queue";
 import { srvs, emitter } from "./services";
 import { sleep } from "./utils";
+import { TeaFile } from "./teaclave";
 
 export type Option<S extends Service> = ServiceOption<Args, S>;
 
@@ -16,12 +18,15 @@ export interface Args {
 
 const WHILE_SLEEP = 2000;
 const CHECK_HEALTH_SLEEP = 180000;
+const IPFS_PQUEUE_CONCURRENCY = 20;
 
 export class Service {
   private args: Args;
   private machine: string;
   private iterKey: string;
   private ipfsQueue: QueueItem[] = [];
+  private ipfsPQueue: PQueue;
+  private ipfsAbortCtrls: { [k: string]: AbortController } = {};
   private teaQueue: QueueItem[] = [];
   private delQueue: string[] = [];
   private addFiles: string[] = [];
@@ -98,7 +103,9 @@ export class Service {
       this.enqueueDelFile(cid);
     });
     for (const cid of currentAddFiles) {
-      await this.checkTeaFile(cid);
+      const teaFile = await srvs.teaclave.getFile(cid);
+      if (!teaFile) continue;
+      await this.checkTeaFile(teaFile);
     }
   }
 
@@ -120,17 +127,25 @@ export class Service {
       const file = await this.worthAddFile(cid);
       if (!file) return;
       if (file.existReplica) return;
-      this.ipfsQueue.push({
+      const item: QueueItem = {
         cid,
         fileSize: file.fileSize,
         numReplicas: file.numReplicas,
-      });
+      };
+      if (this.ipfsPQueue.size < IPFS_PQUEUE_CONCURRENCY) {
+        this.ipfsPQueue.add(() => this.addIpfsFile(item));
+      } else {
+        this.ipfsQueue.push(item);
+      }
     } catch (err) {
       srvs.logger.error(`Fail to add file ${cid}, ${err.message}`);
     }
   }
 
   public async enqueueDelFile(cid: string) {
+    if (this.ipfsAbortCtrls[cid]) {
+      this.ipfsAbortCtrls[cid].abort();
+    }
     this.ipfsQueue = this.ipfsQueue.filter((v) => v.cid !== cid);
     this.teaQueue = this.teaQueue.filter((v) => v.cid !== cid);
     this.delQueue.push(cid);
@@ -215,11 +230,26 @@ export class Service {
       return false;
     }
   }
-
   private async runIpfsQueue() {
+    this.ipfsPQueue = new PQueue({ concurrency: IPFS_PQUEUE_CONCURRENCY });
     while (true) {
       if (this.destoryed) break;
-      if (this.ipfsQueue.length === 0 || !srvs.ipfs.health) {
+      if (
+        this.ipfsQueue.length === 0 ||
+        !srvs.ipfs.health ||
+        this.ipfsPQueue.size >= IPFS_PQUEUE_CONCURRENCY
+      ) {
+        await sleep(WHILE_SLEEP);
+        continue;
+      }
+      const item = this.ipfsQueue.pop();
+      await this.addIpfsFile(item);
+    }
+  }
+  private async runTeaQueue() {
+    while (true) {
+      if (this.destoryed) break;
+      if (this.teaQueue.length === 0 || !srvs.teaclave.health) {
         await sleep(WHILE_SLEEP);
         continue;
       }
@@ -228,18 +258,7 @@ export class Service {
         await sleep(WHILE_SLEEP);
         continue;
       }
-      const item = this.dequeueIpfs();
-      await this.addIpfsFile(item);
-    }
-  }
 
-  private async runTeaQueue() {
-    while (true) {
-      if (this.destoryed) break;
-      if (this.teaQueue.length === 0 || !srvs.teaclave.health) {
-        await sleep(WHILE_SLEEP);
-        continue;
-      }
       const item = this.dequeueTea();
       await this.addTeaFile(item);
     }
@@ -267,10 +286,14 @@ export class Service {
       const file = await this.worthAddFile(cid);
       if (!file) return;
       if (file.existReplica) return;
-      await srvs.ipfs.pinAdd(cid, fileSize);
+      const [abortCtrl, pinAdd] = srvs.ipfs.pinAdd(cid, fileSize);
+      this.ipfsAbortCtrls[cid] = abortCtrl;
+      await pinAdd();
       this.teaQueue.push(item);
     } catch (err) {
       srvs.logger.error(`Fail to add ipfs file ${cid}, ${err.message}`);
+    } finally {
+      delete this.ipfsAbortCtrls[cid];
     }
   }
 
@@ -304,6 +327,7 @@ export class Service {
       );
       for (const key of keys) {
         const cid = key.toHuman()[0];
+        srvs.logger.debug("Iter chain file", { cid });
         await this.enqueueAddFile(cid);
       }
       if (keys.length > 0) this.iterKey = _.last(keys).toString();
@@ -316,8 +340,8 @@ export class Service {
     try {
       const teaFiles = await srvs.teaclave.listFiles();
       for (const teaFile of teaFiles) {
-        const { cid } = teaFile;
-        await this.checkTeaFile(cid);
+        srvs.logger.debug("Iter tea file", teaFile);
+        await this.checkTeaFile(teaFile);
       }
     } catch (err) {
       srvs.logger.error(`Fail to iter tea files, ${err.message}`);
@@ -359,9 +383,8 @@ export class Service {
     }
   }
 
-  private async checkTeaFile(cid: string) {
-    const teaFile = await srvs.teaclave.getFile(cid);
-    if (!teaFile) return;
+  private async checkTeaFile(teaFile: TeaFile) {
+    const { cid } = teaFile;
     const file = await this.worthAddFile(cid);
     if (!file) {
       this.enqueueDelFile(cid);
@@ -391,23 +414,6 @@ export class Service {
     } catch (err) {
       srvs.logger.error(`Check commit files throws ${err.message}`);
     }
-  }
-
-  private dequeueIpfs(): QueueItem {
-    let maxScore = 0;
-    let queueIndex = 0;
-    this.ipfsQueue.forEach((item, index) => {
-      const { fileSize } = item;
-      const timeEstimate =
-        srvs.ipfs.estimateTime(fileSize, true) +
-        srvs.teaclave.estimateTime(fileSize, true);
-      const score = this.calculateScore(item, timeEstimate);
-      if (score > maxScore) {
-        queueIndex = index;
-        maxScore = score;
-      }
-    });
-    return this.ipfsQueue.splice(queueIndex, 1)[0];
   }
 
   private dequeueTea(): QueueItem {

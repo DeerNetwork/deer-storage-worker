@@ -13,21 +13,14 @@ export type Option<S extends Service> = ServiceOption<Args, S>;
 export interface Args {
   url: string;
   numProvs: number;
+  basePinTimeout: number;
 }
-
-export const SPEED = 131072; // 128k/s
 
 export class Service {
   public health = true;
 
   private args: Args;
   private client: IPFSHTTPClient;
-  private currentFile: CurrentFile;
-  private speed = SPEED;
-
-  private count = 0;
-  private summaryTime = 0;
-  private summarySize = 0;
 
   public constructor(option: InitOption<Args, Service>) {
     this.args = option.args;
@@ -37,23 +30,23 @@ export class Service {
     this.client = create({ url: this.args.url });
   }
 
-  public async pinAdd(cid: string, fileSize: number): Promise<boolean> {
-    try {
-      srvs.logger.debug("ipfs.pinAdd", { cid });
-      const timeout = Math.max((fileSize / this.speed) * 1000, 10000);
-      const now = Date.now();
-      this.currentFile = { cid, beginAt: now, endAt: now + timeout, fileSize };
-      await this.client.pin.add(cid, { timeout: 1.2 * timeout });
-      this.count += 1;
-      this.summarySize += fileSize;
-      this.summaryTime += Date.now() - now;
-      this.speed = this.summarySize / this.summaryTime / 1000 || SPEED;
-      this.currentFile = null;
-      return true;
-    } catch (err) {
-      this.currentFile = null;
-      throw new Error(`ipfs.pinAdd ${cid}, ${err.message}`);
-    }
+  public pinAdd(
+    cid: string,
+    fileSize: number
+  ): [AbortController, () => Promise<boolean>] {
+    const controller = new AbortController();
+    const signal = controller.signal;
+    const timeout =
+      this.args.basePinTimeout * 60000 + (fileSize / 1024 / 200) * 1000;
+    const run = async () => {
+      try {
+        await this.client.pin.add(cid, { timeout, signal });
+        return true;
+      } catch (err) {
+        throw new Error(`ipfs.pinAdd ${cid}, ${err.message}`);
+      }
+    };
+    return [controller, run];
   }
 
   public async pinRemove(cid: string): Promise<boolean> {
@@ -119,7 +112,7 @@ export class Service {
   public async existProv(cid: string): Promise<boolean> {
     srvs.logger.debug("ipfs.existProv", { cid });
     const providers = this.client.dht.findProvs(cid as any, {
-      timeout: 10000,
+      timeout: 5000,
       numProviders: this.args.numProvs,
     });
     let count = 0;
@@ -142,21 +135,6 @@ export class Service {
       this.health = false;
     }
   }
-
-  public estimateTime(fileSize: number, current = true): number {
-    let time = (fileSize / this.speed) * 1000;
-    if (current && this.currentFile) {
-      time += Math.max(0, this.currentFile.endAt - Date.now());
-    }
-    return time;
-  }
 }
 
 export const init = createInitFn(Service);
-
-interface CurrentFile {
-  cid: string;
-  fileSize: number;
-  beginAt: number;
-  endAt: number;
-}

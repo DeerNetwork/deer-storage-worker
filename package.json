@@ -1,6 +1,6 @@
 {
   "name": "@deernetwork/deer-storage-worker",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Storage worker for Deer Network as bridge between chain and storage teaclave.",
   "license": "MIT",
   "publishConfig": {
@@ -27,6 +27,7 @@
     "ipfs-http-client": "^54.0.0",
     "lodash": "^4.17.21",
     "p-event": "^4",
+    "p-queue": "^6",
     "use-services": "^1.3.1",
     "winston": "^3.3.3"
   },

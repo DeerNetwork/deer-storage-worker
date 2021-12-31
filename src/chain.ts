@@ -173,6 +173,9 @@ export class Service {
 
   public async checkHealth() {
     try {
+      srvs.logger.debug("Check chain health", {
+        blockNum: this.latestBlockNum,
+      });
       await this.api.rpc.system.syncState();
       this.health = true;
     } catch (err) {
@@ -248,9 +251,6 @@ export class Service {
   private async listenBlocks() {
     await this.api.rpc.chain.subscribeNewHeads(async (header) => {
       this.latestBlockNum = header.number.toNumber();
-      srvs.logger.debug("Listen new block", {
-        now: this.latestBlockNum,
-      });
       if (this.latestBlockNum % (this.constants.roundDuration / 10) === 0) {
         this.updateReportState();
       }

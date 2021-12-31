@@ -37,7 +37,9 @@ const options = {
     init: Ipfs.init,
     args: {
       url: "http://127.0.0.1:5001",
-      numProvs: parseInt(process.env.WORKER__IPFS__NUMPROVS) || 2,
+      numProvs: parseInt(process.env.WORKER__IPFS__NUM_PROVS) || 1,
+      basePinTimeout:
+        parseInt(process.env.WORKER__IPFS__BASE_PIN_TIMEOUT) || 60,
     },
   } as Ipfs.Option<Ipfs.Service>,
   teaclave: {

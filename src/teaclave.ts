@@ -143,6 +143,13 @@ export class Service {
 
   public async checkHealth() {
     try {
+      srvs.logger.debug("Check tea health", {
+        speed: this.speed,
+        space: this.space,
+        count: this.count,
+        summaryTime: this.summaryTime,
+        summarySize: this.summarySize,
+      });
       const system = await this.system();
       this.space = system.rsd_size;
       this.health = true;
