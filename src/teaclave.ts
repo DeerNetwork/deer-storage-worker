@@ -50,7 +50,7 @@ export class Service {
   }
 
   public async preparePeport(files: string[]): Promise<PrepareReportRes> {
-    srvs.logger.debug(`teaclave.preparePeport: ${files}`);
+    srvs.logger.debug(`teaclave.preparePeport`, { files });
     return this.wrapRpc("preparePeport", () =>
       this.api.post(
         "/report/prepare",
@@ -63,7 +63,7 @@ export class Service {
   }
 
   public async commitReport(rid: number): Promise<any> {
-    srvs.logger.debug(`teaclave.commitReport: ${rid}`);
+    srvs.logger.debug(`teaclave.commitReport`, { rid });
     return this.wrapRpc("commitReport", () =>
       this.api.post(`/report/commit/${rid}`, {
         timeout: 30000,
@@ -81,11 +81,14 @@ export class Service {
         endAt: before + timeout,
         fileSize,
       };
-      srvs.logger.debug(`teaclave.addFile: ${cid}`);
+      srvs.logger.debug(`teaclave.addFile.do`, { cid, fileSize });
       const res = await this.wrapRpc<any>("addFile", () =>
-        this.api.post(`/files/${cid}`)
+        this.api.post(`/files/${cid}`, {
+          timeout: 10240 * 1000,
+        })
       );
       const { size } = res;
+      srvs.logger.debug(`teaclave.addFile.done`, { cid, fileSize, size });
       const elapse = Math.max(
         (Date.now() - before - this.args.baseTimeout) / 1000,
         0
@@ -103,12 +106,13 @@ export class Service {
 
   public async delFile(cid: string): Promise<void> {
     try {
-      srvs.logger.debug(`teaclave.delFile: ${cid}`);
+      srvs.logger.debug(`teaclave.delFile.do`, { cid });
       this.wrapRpc("delFile", () =>
         this.api.delete(`/files/${cid}`, {
-          timeout: 10000,
+          timeout: 1024 * 1000,
         })
       );
+      srvs.logger.debug(`teaclave.delFile.done`, { cid });
       return;
     } catch (err) {
       if (/File not found/.test(err)) return;
@@ -121,7 +125,7 @@ export class Service {
       const [, fileSize, committed] = await this.wrapRpc<
         [string, number, boolean]
       >("existFile", () =>
-        this.api.get(`/files/${cid}/status`, { timeout: 5000 })
+        this.api.get(`/files/${cid}/status`, { timeout: 10000 })
       );
       return { cid, fileSize, committed };
     } catch (err) {
