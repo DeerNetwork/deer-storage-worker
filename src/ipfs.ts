@@ -17,6 +17,8 @@ export interface Args {
   basePinTimeout: number;
 }
 
+const TIMEOUT = 10000;
+
 export class Service {
   public health = true;
 
@@ -70,7 +72,7 @@ export class Service {
       const list = [];
       for await (const { cid } of this.client.pin.ls({
         type: "recursive",
-        timeout: 3000,
+        timeout: TIMEOUT,
       })) {
         list.push(cid.toString());
       }
@@ -81,19 +83,21 @@ export class Service {
   }
 
   public async pinExist(cid: string): Promise<boolean> {
+    srvs.logger.debug("ipfs.pinExist", { cid });
     try {
-      srvs.logger.debug("ipfs.pinExist", { cid });
       for await (const { cid: cidObj } of this.client.pin.ls({
         type: "recursive",
         paths: cid,
-        timeout: 3000,
+        timeout: TIMEOUT,
       })) {
         if (cidObj.toString() === cid) {
+          srvs.logger.debug("ipfs.pinExist.done", { cid, exist: true });
           return true;
         }
       }
     } catch (err) {
       if (/not pinned/.test(err.message)) {
+        srvs.logger.debug("ipfs.pinExist.done", { cid, exist: false });
         return false;
       }
       throw new Error(`ipfs.pinExist ${err.message}`);
@@ -104,32 +108,11 @@ export class Service {
   public async objectStat(cid: string): Promise<StatResult> {
     try {
       return await this.client.object.stat(cid as any, {
-        timeout: 3000,
+        timeout: TIMEOUT,
       });
     } catch (err) {
-      if (/not found/.test(err.message)) {
-        return null;
-      }
       throw new Error(`ipfs.object.stat ${cid}, ${err.message}`);
     }
-  }
-
-  public async existProv(cid: string): Promise<boolean> {
-    srvs.logger.debug("ipfs.existProv.do", { cid });
-    const providers = this.client.dht.findProvs(cid as any, {
-      timeout: 10000,
-      numProviders: this.args.numProvs,
-    });
-    let count = 0;
-    for await (const _ of providers) { // eslint-disable-line
-      count += 1;
-      if (count >= this.args.numProvs) {
-        srvs.logger.debug("ipfs.existProv.done", { cid, success: true });
-        return true;
-      }
-    }
-    srvs.logger.debug("ipfs.existProv.done", { cid, success: false });
-    return false;
   }
 
   public async checkHealth() {

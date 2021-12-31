@@ -290,6 +290,8 @@ export class Service {
       const [abortCtrl, pinAdd] = srvs.ipfs.pinAdd(cid, fileSize);
       this.ipfsAbortCtrls[cid] = abortCtrl;
       await pinAdd();
+      const { CumulativeSize } = await srvs.ipfs.objectStat(cid);
+      item.fileSize = CumulativeSize;
       this.teaQueue.push(item);
     } catch (err) {
       srvs.logger.error(`Fail to add ipfs file ${cid}, ${err.message}`);
@@ -365,10 +367,6 @@ export class Service {
     if (file.existReplica) {
       this.committedFiles.set(cid, file.expireAt);
       return file;
-    }
-    if (!(await srvs.ipfs.existProv(cid))) {
-      srvs.logger.warn(`Invalid file ${cid}`);
-      return;
     }
     return file;
   }
