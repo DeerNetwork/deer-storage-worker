@@ -1,3 +1,6 @@
+import "@deernetwork/type-definitions/dist/interfaces/augment-api";
+import "@deernetwork/type-definitions/dist/interfaces/augment-types";
+
 import {
   ServiceOption,
   InitOption,
@@ -6,7 +9,6 @@ import {
   createInitFn,
 } from "use-services";
 import { ApiPromise, WsProvider } from "@polkadot/api";
-import { u32 } from "@polkadot/types";
 import { typesBundle } from "@deernetwork/type-definitions";
 import { SubmittableExtrinsic } from "@polkadot/api/promise/types";
 import { DispatchError } from "@polkadot/types/interfaces";
