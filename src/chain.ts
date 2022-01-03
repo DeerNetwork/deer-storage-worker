@@ -339,14 +339,14 @@ export class Service {
     if (maybeNode.isNone) {
       planReportAt = this.latestBlockNum + _.random(20, 40);
     } else {
-      if (planReportAt <= currentRoundAt && reportedAt < currentRoundAt) {
+      if (planReportAt <= currentRoundAt && reportedAt <= currentRoundAt) {
         planReportAt = Math.min(
           this.latestBlockNum + _.random(20, 40),
           nextRoundAt - reportBlocks
         );
       } else if (
         planReportAt <= currentRoundAt &&
-        reportedAt >= currentRoundAt
+        reportedAt > currentRoundAt
       ) {
         planReportAt = safePlanReportAt(reportedAt + roundDuration);
       } else if (
