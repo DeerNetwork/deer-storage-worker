@@ -125,8 +125,8 @@ export class Service {
     return result;
   }
 
-  public async getStash() {
-    return await this.api.query.fileStorage.stashs(this.walletAddress);
+  public async getNode() {
+    return await this.api.query.fileStorage.nodes(this.walletAddress);
   }
 
   public async getRegister(machine: string) {

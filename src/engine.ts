@@ -163,19 +163,19 @@ export class Service {
 
   private async setupTeaclave() {
     try {
-      const maybeStash = await srvs.chain.getStash();
-      if (maybeStash.isNone) {
+      const maybeNode = await srvs.chain.getNode();
+      if (maybeNode.isNone) {
         srvs.logger.warn("Account have not been stashed");
         return false;
       }
-      const stash = maybeStash.unwrap();
-      if (stash.machineId.isNone) {
+      const node = maybeNode.unwrap();
+      if (node.machineId.isNone) {
         srvs.logger.info("Try to register teaclave");
         await this.registerNode();
         return false;
       }
       const system = await srvs.teaclave.system();
-      const machine = stash.machineId.unwrap().toString();
+      const machine = node.machineId.unwrap().toString();
       if (machine !== "0x" + system.machine_id) {
         emitter.emit(
           "fatal",
