@@ -60,7 +60,7 @@ export class Service {
     const addFiles = this.addFiles.slice();
     const settleFiles = this.settleFiles.slice();
     try {
-      srvs.logger.debug("Starging report work");
+      srvs.logger.debug("Starting report work");
       await this.maybeCommitReport();
       const [addFileValidates, settleFileValidates] = await Promise.all([
         srvs.chain.batchValidateCids(addFiles, "addFiles"),

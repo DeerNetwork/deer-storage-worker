@@ -259,7 +259,7 @@ export class Service {
       }
       const shouldReport =
         !this.reportState.roundReported &&
-        this.latestBlockNum >= this.reportState.planReportAt;
+        this.latestBlockNum >= this.reportState.planReportAt - 1;
 
       if (
         shouldReport &&
