@@ -326,6 +326,8 @@ export class Service {
     const currentRoundAt = nextRoundAt - roundDuration;
     const node = maybeNode.unwrapOrDefault();
     const reportedAt = node.reportedAt.toNumber();
+    const bias = this.constants.roundDuration / 20;
+    const randBlocks = _.random(Math.floor(0.5 * bias), Math.ceil(1.2 * bias));
 
     let planReportAt = this.reportState?.planReportAt || 0;
     const safePlanReportAt = (maybePlanReportAt) =>
@@ -337,11 +339,11 @@ export class Service {
         : maybePlanReportAt;
 
     if (maybeNode.isNone) {
-      planReportAt = this.latestBlockNum + _.random(20, 40);
+      planReportAt = this.latestBlockNum + randBlocks;
     } else {
       if (planReportAt <= currentRoundAt && reportedAt <= currentRoundAt) {
         planReportAt = Math.min(
-          this.latestBlockNum + _.random(20, 40),
+          this.latestBlockNum + randBlocks,
           nextRoundAt - reportBlocks
         );
       } else if (
