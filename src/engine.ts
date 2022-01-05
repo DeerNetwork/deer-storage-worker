@@ -433,19 +433,20 @@ export class Service {
   private calculateScore(item: QueueItem, timeEstimate: number) {
     const {
       blockSecs,
-      roundDuration,
+      sessionDuration,
       latestBlockNum,
       planReportAt,
       maxFileReplicas,
     } = srvs.chain.commonProps();
     const { numReplicas } = item;
     const timeBlocks =
-      Math.ceil(timeEstimate / blockSecs / 1000) % roundDuration;
+      Math.ceil(timeEstimate / blockSecs / 1000) % sessionDuration;
     let reportBlocks: number;
     if (timeBlocks + latestBlockNum <= planReportAt) {
       reportBlocks = planReportAt - latestBlockNum - timeBlocks;
     } else {
-      reportBlocks = planReportAt + roundDuration - latestBlockNum - timeBlocks;
+      reportBlocks =
+        planReportAt + sessionDuration - latestBlockNum - timeBlocks;
     }
     const blockScore = Math.max(30 - reportBlocks, 0) * 1000;
     const replicaScore = Math.max(maxFileReplicas - numReplicas, 0) * 100;

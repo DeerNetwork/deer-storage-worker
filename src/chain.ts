@@ -79,21 +79,17 @@ export class Service {
   }
 
   public async getFile(cid: string): Promise<ChainFile> {
-    const [maybeStoreFile, maybeFileOrder] = await Promise.all([
-      this.api.query.fileStorage.storeFiles(cid),
-      this.api.query.fileStorage.fileOrders(cid),
-    ]);
-    if (maybeStoreFile.isNone) return;
-    const storeFile = maybeStoreFile.unwrap();
-    const fileOrder = maybeFileOrder.unwrapOrDefault();
+    const maybeFile = await this.api.query.fileStorage.files(cid);
+    if (maybeFile.isNone) return;
+    const file = maybeFile.unwrap();
     return {
-      addedAt: storeFile.addedAt.toNumber(),
-      reserved: storeFile.reserved.toBn().toString(),
-      fileSize: fileOrder.fileSize.toNumber() || storeFile.fileSize.toNumber(),
-      fee: fileOrder.fee.toBn().toString(),
-      expireAt: fileOrder.expireAt.toNumber(),
-      numReplicas: fileOrder.replicas.length,
-      existReplica: !!fileOrder.replicas.find((f) => f.eq(this.walletAddress)),
+      addedAt: file.addedAt.toNumber(),
+      reserved: file.reserved.toBn().toString(),
+      fileSize: file.fileSize.toNumber() || file.fileSize.toNumber(),
+      fee: file.fee.toBn().toString(),
+      expireAt: file.expireAt.toNumber(),
+      numReplicas: file.replicas.length,
+      existReplica: !!file.replicas.find((f) => f.eq(this.walletAddress)),
     };
   }
 
@@ -102,23 +98,21 @@ export class Service {
     kind: "addFiles" | "settleFiles"
   ): Promise<boolean[]> {
     if (cids.length === 0) return [];
-    const maybeFileOrders = await this.api.query.fileStorage.fileOrders.multi(
-      cids
-    );
+    const maybeFiles = await this.api.query.fileStorage.files.multi(cids);
     const result: boolean[] = [];
     const { maxFileReplicas } = this.constants;
     for (let i = 0; i < cids.length; i++) {
-      const fileOrder = maybeFileOrders[i].unwrapOrDefault();
+      const file = maybeFiles[i].unwrapOrDefault();
       if (kind === "addFiles") {
         result.push(
-          fileOrder.replicas.length === 0 ||
-            (!fileOrder.replicas.find((v) => v.eq(this.walletAddress)) &&
-              fileOrder.replicas.length < maxFileReplicas)
+          file.replicas.length === 0 ||
+            (!file.replicas.find((v) => v.eq(this.walletAddress)) &&
+              file.replicas.length < maxFileReplicas)
         );
       } else if (kind === "settleFiles") {
         result.push(
-          !!fileOrder.replicas.find((v) => v.eq(this.walletAddress)) &&
-            fileOrder.expireAt.toNumber() < this.latestBlockNum
+          !!file.replicas.find((v) => v.eq(this.walletAddress)) &&
+            file.expireAt.toNumber() < this.latestBlockNum
         );
       }
     }
@@ -134,10 +128,8 @@ export class Service {
   }
 
   public async getRid() {
-    const node = (
-      await this.api.query.fileStorage.nodes(this.walletAddress)
-    ).unwrapOrDefault();
-    return node.rid.toNumber();
+    const node = await this.getNode();
+    return node.unwrapOrDefault().rid.toNumber();
   }
 
   public async register(data: AttestRes) {
@@ -188,7 +180,7 @@ export class Service {
   }
 
   public async iterStoreFileKeys(pageSize: number, startKey?: string) {
-    const keys = await this.api.query.fileStorage.storeFiles.keysPaged({
+    const keys = await this.api.query.fileStorage.files.keysPaged({
       args: [],
       pageSize,
       startKey,
@@ -199,10 +191,10 @@ export class Service {
   public commonProps(): CommonProps {
     const { blockSecs, latestBlockNum } = srvs.chain;
     const { planReportAt } = srvs.chain.reportState;
-    const { roundDuration, maxFileReplicas } = srvs.chain.constants;
+    const { sessionDuration, maxFileReplicas } = srvs.chain.constants;
     return {
       blockSecs,
-      roundDuration,
+      sessionDuration,
       latestBlockNum,
       planReportAt,
       maxFileReplicas,
@@ -254,11 +246,11 @@ export class Service {
   private async listenBlocks() {
     await this.api.rpc.chain.subscribeNewHeads(async (header) => {
       this.latestBlockNum = header.number.toNumber();
-      if (this.latestBlockNum % (this.constants.roundDuration / 10) === 0) {
+      if (this.latestBlockNum % (this.constants.sessionDuration / 10) === 0) {
         this.updateReportState();
       }
       const shouldReport =
-        !this.reportState.roundReported &&
+        !this.reportState.sessionReported &&
         this.latestBlockNum >= this.reportState.planReportAt - 1;
 
       if (
@@ -315,60 +307,61 @@ export class Service {
   }
 
   private async updateReportState(): Promise<ReportState> {
-    const [maybeNode, nextRoundAtN] = await Promise.all([
+    const [maybeNode, session] = await Promise.all([
       this.api.query.fileStorage.nodes(this.walletAddress),
-      this.api.query.fileStorage.nextRoundAt(),
+      this.api.query.fileStorage.session(),
     ]);
-    const { roundDuration } = this.constants;
+    const { sessionDuration } = this.constants;
     const { reportBlocks } = this.args;
-    const nextRoundAt = nextRoundAtN.toNumber();
-    const nextNextRoundAt = nextRoundAt + roundDuration;
-    const currentRoundAt = nextRoundAt - roundDuration;
+    const { beginAt, endAt } = session;
+    const sessionEndAt = endAt.toNumber();
+    const nextSessionEndAt = sessionEndAt + sessionDuration;
+    const sessionBeginAt = beginAt.toNumber();
     const node = maybeNode.unwrapOrDefault();
     const reportedAt = node.reportedAt.toNumber();
-    const bias = this.constants.roundDuration / 20;
+    const bias = this.constants.sessionDuration / 20;
     const randBlocks = _.random(Math.floor(0.5 * bias), Math.ceil(1.2 * bias));
 
     let planReportAt = this.reportState?.planReportAt || 0;
     const safePlanReportAt = (maybePlanReportAt) =>
-      maybePlanReportAt > nextNextRoundAt - reportBlocks
+      maybePlanReportAt > nextSessionEndAt - reportBlocks
         ? _.random(
-            nextNextRoundAt - roundDuration / 2,
-            nextNextRoundAt - reportBlocks
+            nextSessionEndAt - sessionDuration / 2,
+            nextSessionEndAt - reportBlocks
           )
         : maybePlanReportAt;
 
     if (maybeNode.isNone) {
       planReportAt = this.latestBlockNum + randBlocks;
     } else {
-      if (planReportAt <= currentRoundAt && reportedAt <= currentRoundAt) {
+      if (planReportAt < sessionBeginAt && reportedAt < sessionBeginAt) {
         planReportAt = Math.min(
           this.latestBlockNum + randBlocks,
-          nextRoundAt - reportBlocks
+          sessionEndAt - reportBlocks
         );
       } else if (
-        planReportAt <= currentRoundAt &&
-        reportedAt > currentRoundAt
+        planReportAt < sessionBeginAt &&
+        reportedAt >= sessionBeginAt
       ) {
-        planReportAt = safePlanReportAt(reportedAt + roundDuration);
+        planReportAt = safePlanReportAt(reportedAt + sessionDuration);
       } else if (
-        currentRoundAt < planReportAt &&
-        planReportAt < nextRoundAt &&
-        reportedAt < currentRoundAt
+        sessionBeginAt <= planReportAt &&
+        planReportAt <= sessionEndAt &&
+        reportedAt < sessionBeginAt
       ) {
       } else if (
-        currentRoundAt < planReportAt &&
-        planReportAt < nextRoundAt &&
-        reportedAt >= currentRoundAt
+        sessionBeginAt <= planReportAt &&
+        planReportAt <= sessionEndAt &&
+        reportedAt >= sessionBeginAt
       ) {
-        planReportAt = safePlanReportAt(reportedAt + roundDuration);
+        planReportAt = safePlanReportAt(reportedAt + sessionDuration);
       }
     }
     this.reportState = {
       rid: node.rid.toNumber(),
-      nextRoundAt: nextRoundAt,
+      sessionEndAt: sessionEndAt,
       reportedAt,
-      roundReported: reportedAt !== 0 && reportedAt >= currentRoundAt,
+      sessionReported: reportedAt !== 0 && reportedAt >= sessionBeginAt,
       planReportAt: planReportAt,
     };
     srvs.logger.info(`Update report state`, {
@@ -382,7 +375,7 @@ export class Service {
 
   private async syncConstants() {
     const keys = [
-      "roundDuration",
+      "sessionDuration",
       "maxFileReplicas",
       "effectiveFileReplicas",
       "maxFileSize",
@@ -428,7 +421,7 @@ export class Service {
 export const init = createInitFn(Service);
 
 export interface ChainConsts {
-  roundDuration: number;
+  sessionDuration: number;
   maxFileReplicas: number;
   effectiveFileReplicas: number;
   maxFileSize: number;
@@ -437,9 +430,9 @@ export interface ChainConsts {
 
 export interface ReportState {
   rid: number;
-  nextRoundAt: number;
+  sessionEndAt: number;
   reportedAt: number;
-  roundReported: boolean;
+  sessionReported: boolean;
   planReportAt: number;
 }
 
@@ -457,6 +450,6 @@ export interface CommonProps {
   blockSecs: number;
   latestBlockNum: number;
   planReportAt: number;
-  roundDuration: number;
+  sessionDuration: number;
   maxFileReplicas: number;
 }
