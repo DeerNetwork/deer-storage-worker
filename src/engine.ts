@@ -349,8 +349,8 @@ export class Service {
 
   private async syncReportFiles() {
     const liquidateFiles: Set<string> = new Set();
-    for (const [cid, expireAt] of this.onchainFiles.entries()) {
-      if (expireAt < srvs.chain.latestBlockNum) {
+    for (const [cid, liquidateAt] of this.onchainFiles.entries()) {
+      if (liquidateAt < srvs.chain.latestBlockNum) {
         liquidateFiles.add(cid);
       }
     }
@@ -419,14 +419,14 @@ export class Service {
 
   private isFileIncluded(file: ChainFile) {
     if (file.included) {
-      this.onchainFiles.set(file.cid, file.expireAt);
+      this.onchainFiles.set(file.cid, file.liquidateAt);
       return true;
     }
     return false;
   }
 
   private isFileLiquidated(file: ChainFile) {
-    return file.expireAt > srvs.chain.latestBlockNum - 1;
+    return file.liquidateAt > srvs.chain.latestBlockNum - 1;
   }
 
   private calculateScore(item: QueueItem, timeEstimate: number) {

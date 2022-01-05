@@ -404,7 +404,7 @@ export class Service {
       cid,
       fileSize: file.fileSize.toNumber() || file.fileSize.toNumber(),
       fee: file.fee.toBn().toString(),
-      expireAt: file.expireAt.toNumber(),
+      liquidateAt: file.liquidateAt.toNumber(),
       numReplicas: file.replicas.length,
       included: !!file.replicas.find((f) => f.eq(this.walletAddress)),
     };
@@ -433,7 +433,7 @@ export interface ChainFile {
   cid: string;
   fileSize: number;
   fee: string;
-  expireAt: number;
+  liquidateAt: number;
   numReplicas: number;
   included: boolean;
 }
