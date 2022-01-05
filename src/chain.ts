@@ -20,6 +20,7 @@ import { sleep, hex2str, formatHexArr } from "./utils";
 import { AttestRes, PrepareReportRes } from "./teaclave";
 import { srvs, emitter } from "./services";
 import { cryptoWaitReady } from "@polkadot/util-crypto";
+import { PalletStorageFileInfo } from "@polkadot/types/lookup";
 
 export type Option<S extends Service> = ServiceOption<Args, S>;
 
@@ -82,39 +83,17 @@ export class Service {
     const maybeFile = await this.api.query.fileStorage.files(cid);
     if (maybeFile.isNone) return;
     const file = maybeFile.unwrap();
-    return {
-      addedAt: file.addedAt.toNumber(),
-      reserved: file.reserved.toBn().toString(),
-      fileSize: file.fileSize.toNumber() || file.fileSize.toNumber(),
-      fee: file.fee.toBn().toString(),
-      expireAt: file.expireAt.toNumber(),
-      numReplicas: file.replicas.length,
-      existReplica: !!file.replicas.find((f) => f.eq(this.walletAddress)),
-    };
+    return this.toChainFile(cid, file);
   }
 
-  public async batchValidateCids(
-    cids: string[],
-    kind: "addFiles" | "settleFiles"
-  ): Promise<boolean[]> {
+  public async listFiles(cids: string[]): Promise<ChainFile[]> {
+    const result = [];
     if (cids.length === 0) return [];
     const maybeFiles = await this.api.query.fileStorage.files.multi(cids);
-    const result: boolean[] = [];
-    const { maxFileReplicas } = this.constants;
     for (let i = 0; i < cids.length; i++) {
-      const file = maybeFiles[i].unwrapOrDefault();
-      if (kind === "addFiles") {
-        result.push(
-          file.replicas.length === 0 ||
-            (!file.replicas.find((v) => v.eq(this.walletAddress)) &&
-              file.replicas.length < maxFileReplicas)
-        );
-      } else if (kind === "settleFiles") {
-        result.push(
-          !!file.replicas.find((v) => v.eq(this.walletAddress)) &&
-            file.expireAt.toNumber() < this.latestBlockNum
-        );
-      }
+      const maybeFile = maybeFiles[i];
+      if (maybeFile.isNone) continue;
+      result.push(this.toChainFile(cids[i], maybeFile.unwrap()));
     }
     return result;
   }
@@ -146,12 +125,12 @@ export class Service {
   public async reportWork(
     machine: string,
     data: PrepareReportRes,
-    settleFiles: string[]
+    liquidateFiles: string[]
   ) {
     srvs.logger.debug(
       `Report works with args: ${machine}, ${JSON.stringify(
         data
-      )}, ${JSON.stringify(settleFiles)}`
+      )}, ${JSON.stringify(liquidateFiles)}`
     );
     const tx = await this.api.tx.fileStorage.report(
       data.rid,
@@ -159,7 +138,7 @@ export class Service {
       formatHexArr(data.sig),
       data.add_files,
       data.del_files,
-      settleFiles
+      liquidateFiles
     );
 
     return this.sendTx(tx);
@@ -179,13 +158,16 @@ export class Service {
     }
   }
 
-  public async iterStoreFileKeys(pageSize: number, startKey?: string) {
-    const keys = await this.api.query.fileStorage.files.keysPaged({
+  public async iterFiles(pageSize: number, startKey?: string) {
+    const entries = await this.api.query.fileStorage.files.entriesPaged({
       args: [],
       pageSize,
       startKey,
     });
-    return keys;
+    return entries.map(([key, maybeFile]) => ({
+      key,
+      file: this.toChainFile(key.toHuman()[0], maybeFile.unwrap()),
+    }));
   }
 
   public commonProps(): CommonProps {
@@ -416,6 +398,17 @@ export class Service {
       await sleep(this.blockSecs * 500);
     }
   }
+
+  private toChainFile(cid, file: PalletStorageFileInfo): ChainFile {
+    return {
+      cid,
+      fileSize: file.fileSize.toNumber() || file.fileSize.toNumber(),
+      fee: file.fee.toBn().toString(),
+      expireAt: file.expireAt.toNumber(),
+      numReplicas: file.replicas.length,
+      included: !!file.replicas.find((f) => f.eq(this.walletAddress)),
+    };
+  }
 }
 
 export const init = createInitFn(Service);
@@ -437,13 +430,12 @@ export interface ReportState {
 }
 
 export interface ChainFile {
-  addedAt: number;
-  reserved: string;
+  cid: string;
   fileSize: number;
   fee: string;
   expireAt: number;
   numReplicas: number;
-  existReplica: boolean;
+  included: boolean;
 }
 
 export interface CommonProps {

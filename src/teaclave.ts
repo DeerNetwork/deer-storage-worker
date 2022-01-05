@@ -72,8 +72,6 @@ export class Service {
   }
 
   public async addFile(cid: string, fileSize: number): Promise<number> {
-    const exist = await this.existFile(cid);
-    if (exist) return exist.fileSize;
     try {
       const timeout = this.args.baseTimeout + (fileSize / this.speed) * 1000;
       const before = Date.now();
