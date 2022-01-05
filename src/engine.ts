@@ -43,8 +43,8 @@ export class Service {
   }
 
   public async start() {
-    await srvs.chain.start();
-    await this.waitTeaclave();
+    await Promise.all([srvs.chain.start(), this.waitTeaclave()]);
+    await srvs.chain.listen();
     this.runIpfsQueue();
     this.runTeaQueue();
     this.runDelQueue();
