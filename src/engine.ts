@@ -266,8 +266,8 @@ export class Service {
   private async addTeaFile(item: QueueItem) {
     const { cid, fileSize } = item;
     try {
-      const exist = await srvs.teaclave.existFile(cid);
-      if (!exist) {
+      const teaFile = await srvs.teaclave.getFile(cid);
+      if (!teaFile) {
         await srvs.teaclave.addFile(cid, fileSize);
       }
       this.addFiles.add(cid);
@@ -280,8 +280,8 @@ export class Service {
     try {
       const file = await srvs.chain.getFile(cid);
       if (this.isFileIncluded(file)) return;
-      const exist = await srvs.teaclave.existFile(cid);
-      if (exist) await srvs.teaclave.delFile(cid);
+      const teaFile = await srvs.teaclave.getFile(cid);
+      if (teaFile) await srvs.teaclave.delFile(cid);
       await srvs.ipfs.pinRemove(cid);
     } catch (err) {
       srvs.logger.error(`Fail to del file ${cid}, ${err.message}`);

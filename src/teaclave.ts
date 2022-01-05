@@ -120,7 +120,7 @@ export class Service {
     }
   }
 
-  public async existFile(cid: string): Promise<TeaFile> {
+  public async getFile(cid: string): Promise<TeaFile> {
     try {
       const [, fileSize, committed] = await this.wrapRpc<
         [string, number, boolean]
