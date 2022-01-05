@@ -75,9 +75,6 @@ export class Service {
   public async start() {
     await this.waitSynced();
     Promise.all([await this.syncConstants(), await this.updateReportState()]);
-  }
-
-  public async listen() {
     this.listenBlocks();
     this.listenEvents();
   }

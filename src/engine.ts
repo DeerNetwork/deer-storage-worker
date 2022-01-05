@@ -43,8 +43,8 @@ export class Service {
   }
 
   public async start() {
-    await Promise.all([srvs.chain.start(), this.waitTeaclave()]);
-    await srvs.chain.listen();
+    await srvs.chain.start();
+    await this.waitTeaclave();
     this.runIpfsQueue();
     this.runTeaQueue();
     this.runDelQueue();
@@ -55,6 +55,7 @@ export class Service {
 
   public async reportWork() {
     try {
+      if (!this.machine) return;
       srvs.logger.debug("Starting report work");
       this.reporting = true;
       await this.maybeCommitReport();
