@@ -426,7 +426,7 @@ export class Service {
   }
 
   private isFileLiquidated(file: ChainFile) {
-    return file.expireAt > srvs.chain.latestBlockNum;
+    return file.expireAt > srvs.chain.latestBlockNum - 1;
   }
 
   private calculateScore(item: QueueItem, timeEstimate: number) {
