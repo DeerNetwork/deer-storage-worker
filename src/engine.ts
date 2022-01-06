@@ -8,7 +8,7 @@ import { AbortController } from "native-abort-controller";
 import PQueue from "p-queue";
 import { srvs, emitter } from "./services";
 import { sleep } from "./utils";
-import { ChainFile } from "chain";
+import { ChainEvent, ChainFile } from "chain";
 import assert from "assert";
 
 export type Option<S extends Service> = ServiceOption<Args, S>;
@@ -73,7 +73,17 @@ export class Service {
     }
   }
 
-  public async maybeCommitReport() {
+  public async handleChainEvent(event: ChainEvent) {
+    if (event.type === "AddFile") {
+      this.enqueueAddFile(event.cid);
+    } else if (event.type === "DelFile") {
+      this.enqueueDelFile(event.cid);
+    } else if (event.type === "Reported") {
+      await this.maybeCommitReport();
+    }
+  }
+
+  private async maybeCommitReport() {
     const [rid, system] = await Promise.all([
       srvs.chain.getRid(),
       srvs.teaclave.system(),
@@ -85,8 +95,10 @@ export class Service {
     }
   }
 
-  public async enqueueAddFile(cid: string) {
+  private async enqueueAddFile(cid: string) {
     try {
+      if (this.ipfsAbortCtrls[cid]) return;
+      if (this.ipfsQueue.find((v) => v.cid === cid)) return;
       const file = await srvs.chain.getFile(cid);
       if (!file) return;
       if (this.isFileIncluded(file)) {
@@ -105,7 +117,7 @@ export class Service {
     }
   }
 
-  public async enqueueDelFile(cid: string) {
+  private async enqueueDelFile(cid: string) {
     srvs.logger.debug("Deleting file", { cid });
     if (this.ipfsAbortCtrls[cid]) {
       this.ipfsAbortCtrls[cid].abort();

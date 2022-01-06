@@ -256,32 +256,32 @@ export class Service {
             event: ev.toHuman(),
           });
           const cid = hex2str(data[0].toString());
-          await srvs.engine.enqueueAddFile(cid);
+          await srvs.engine.handleChainEvent({ type: "AddFile", cid });
         } else if (method === "FileStored") {
           srvs.logger.debug("Listen event FileStored", {
             event: ev.toHuman(),
           });
           const cid = hex2str(data[0].toString());
-          await srvs.engine.enqueueAddFile(cid);
+          await srvs.engine.handleChainEvent({ type: "AddFile", cid });
         } else if (method === "FileDeleted") {
           srvs.logger.debug("Listen event FileDeleted", {
             event: ev.toHuman(),
           });
           const cid = hex2str(data[0].toString());
-          await srvs.engine.enqueueDelFile(cid);
+          await srvs.engine.handleChainEvent({ type: "DelFile", cid });
         } else if (method === "FileForceDeleted") {
           srvs.logger.debug("Listen event FileForceDeleted", {
             event: ev.toHuman(),
           });
           const cid = hex2str(data[0].toString());
-          await srvs.engine.enqueueDelFile(cid);
+          await srvs.engine.handleChainEvent({ type: "DelFile", cid });
         } else if (method === "NodeReported") {
           if (data[0].eq(this.walletAddress)) {
             srvs.logger.debug("Listen event NodeReported", {
               event: ev.toHuman(),
             });
             await this.updateReportState();
-            await srvs.engine.maybeCommitReport();
+            await srvs.engine.handleChainEvent({ type: "Reported" });
           }
         }
       }
@@ -444,4 +444,19 @@ export interface CommonProps {
   planReportAt: number;
   sessionDuration: number;
   maxFileReplicas: number;
+}
+
+export type ChainEvent = AddFileEvent | DelFileEvent | ReportedEvent;
+export interface AddFileEvent {
+  type: "AddFile";
+  cid: string;
+}
+
+export interface DelFileEvent {
+  type: "DelFile";
+  cid: string;
+}
+
+export interface ReportedEvent {
+  type: "Reported";
 }
