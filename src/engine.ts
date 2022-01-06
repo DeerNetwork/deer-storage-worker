@@ -318,14 +318,14 @@ export class Service {
     try {
       const teaFiles = await srvs.teaclave.listFiles();
       for (const teaFile of teaFiles) {
-        const { cid, committed } = teaFile;
+        const { cid } = teaFile;
         srvs.logger.debug("Iter tea file", teaFile);
         const file = await srvs.chain.getFile(cid);
         if (this.isFileIncluded(file)) {
           continue;
         }
         if (this.isFileFulled(file)) {
-          if (!committed) this.enqueueDelFile(cid);
+          this.enqueueDelFile(cid);
           continue;
         }
         this.addFiles.add(cid);
@@ -393,6 +393,7 @@ export class Service {
         this.enqueueDelFile(cid);
         continue;
       }
+      this.ipfsQueue.push(file);
     }
     this.reportFiles = [[], []];
   }
