@@ -30,7 +30,7 @@ const options = {
       url: "ws://127.0.0.1:9944",
       secret: process.env.WORKER__MNEMONIC || "//Alice",
       blockSecs: 6,
-      reportBlocks: 55,
+      reportBlocks: 51,
     },
   } as Chain.Option<Chain.Service>,
   ipfs: {

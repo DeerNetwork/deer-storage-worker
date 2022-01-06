@@ -9,6 +9,7 @@ import PQueue from "p-queue";
 import { srvs, emitter } from "./services";
 import { sleep } from "./utils";
 import { ChainFile } from "chain";
+import assert from "assert";
 
 export type Option<S extends Service> = ServiceOption<Args, S>;
 
@@ -105,6 +106,7 @@ export class Service {
   }
 
   public async enqueueDelFile(cid: string) {
+    srvs.logger.debug("Deleting file", { cid });
     if (this.ipfsAbortCtrls[cid]) {
       this.ipfsAbortCtrls[cid].abort();
     }
@@ -267,10 +269,7 @@ export class Service {
   private async addTeaFile(item: QueueItem) {
     const { cid, fileSize } = item;
     try {
-      const teaFile = await srvs.teaclave.getFile(cid);
-      if (!teaFile) {
-        await srvs.teaclave.addFile(cid, fileSize);
-      }
+      await srvs.teaclave.addFile(cid, fileSize);
       this.addFiles.add(cid);
     } catch (err) {
       srvs.logger.error(`Fail to add tea file ${cid}, ${err.message}`);
@@ -281,8 +280,7 @@ export class Service {
     try {
       const file = await srvs.chain.getFile(cid);
       if (this.isFileIncluded(file)) return;
-      const teaFile = await srvs.teaclave.getFile(cid);
-      if (teaFile) await srvs.teaclave.delFile(cid);
+      await srvs.teaclave.delFile(cid);
       await srvs.ipfs.pinRemove(cid);
     } catch (err) {
       srvs.logger.error(`Fail to del file ${cid}, ${err.message}`);
@@ -320,14 +318,14 @@ export class Service {
     try {
       const teaFiles = await srvs.teaclave.listFiles();
       for (const teaFile of teaFiles) {
-        const { cid } = teaFile;
+        const { cid, committed } = teaFile;
         srvs.logger.debug("Iter tea file", teaFile);
         const file = await srvs.chain.getFile(cid);
         if (this.isFileIncluded(file)) {
           continue;
         }
         if (this.isFileFulled(file)) {
-          this.enqueueDelFile(cid);
+          if (!committed) this.enqueueDelFile(cid);
           continue;
         }
         this.addFiles.add(cid);
@@ -415,6 +413,7 @@ export class Service {
   }
 
   private isFileFulled(file: ChainFile) {
+    assert(!this.isFileIncluded(file));
     return file.numReplicas >= srvs.chain.constants.maxFileReplicas;
   }
 
