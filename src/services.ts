@@ -27,7 +27,7 @@ const options = {
   chain: {
     init: Chain.init,
     args: {
-      url: "ws://127.0.0.1:9944",
+      url: process.env.WORKER__CHAIN__URL || "ws://127.0.0.1:9944",
       secret: process.env.WORKER__MNEMONIC || "//Alice",
       blockSecs: 6,
       reportBlocks: 51,
