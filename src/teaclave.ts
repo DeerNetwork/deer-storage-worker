@@ -20,11 +20,11 @@ export interface Args {
 
 export class Service {
   public health = true;
+  public space = Infinity;
 
   private args: Args;
   private currentFile: CurrentFile;
   private speed = SPEED;
-  private space = Infinity;
   private api: AxiosInstance;
 
   public constructor(option: InitOption<Args, Service>) {

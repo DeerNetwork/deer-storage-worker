@@ -108,6 +108,7 @@ export class Service {
       if (this.isFileFulled(file)) {
         return;
       }
+      if (file.fileSize > srvs.teaclave.space) return;
       if (this.ipfsPQueue.size < IPFS_PQUEUE_CONCURRENCY) {
         this.ipfsPQueue.add(() => this.addIpfsFile(file));
       } else {
