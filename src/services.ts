@@ -36,7 +36,7 @@ const options = {
   ipfs: {
     init: Ipfs.init,
     args: {
-      url: "http://127.0.0.1:5001",
+      url: process.env.WORKER__IPFS__URL || "http://127.0.0.1:5001",
       numProvs: parseInt(process.env.WORKER__IPFS__NUM_PROVS) || 1,
       basePinTimeout:
         parseInt(process.env.WORKER__IPFS__BASE_PIN_TIMEOUT) || 60,
@@ -45,7 +45,7 @@ const options = {
   teaclave: {
     init: Teaclave.init,
     args: {
-      baseURL: "http://127.0.0.1:2121",
+      url: process.env.WORKER__TEACLAVE__URL || "http://127.0.0.1:2121",
       headers: {
         "Content-Type": "application/json",
       },

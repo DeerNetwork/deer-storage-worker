@@ -13,7 +13,7 @@ export const MIN_SPEED = 65536; // 64K/s
 export const MAX_SPEED = 109051904; // 1G/s
 
 export interface Args {
-  baseURL: string;
+  url: string;
   headers: AxiosRequestHeaders;
   baseTimeout: number;
 }
@@ -30,7 +30,7 @@ export class Service {
   public constructor(option: InitOption<Args, Service>) {
     this.args = option.args;
     this.api = axios.create({
-      baseURL: this.args.baseURL,
+      baseURL: this.args.url,
       headers: this.args.headers,
       validateStatus: () => true,
     });
