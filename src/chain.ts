@@ -1,5 +1,5 @@
-import "@deernetwork/type-definitions/dist/interfaces/augment-api";
-import "@deernetwork/type-definitions/dist/interfaces/augment-types";
+import "@deernetwork/type-definitions/interfaces/augment-api";
+import "@deernetwork/type-definitions/interfaces/augment-types";
 
 import {
   ServiceOption,
@@ -252,40 +252,43 @@ export class Service {
     await this.api.query.system.events(async (events) => {
       for (const ev of events) {
         const {
-          event: { data, method },
+          event: { data, section, method },
         } = ev;
-        if (method === "FileAdded") {
+        const name = `${section}.${method}`;
+        if (name === "fileStorage.FileAdded") {
           srvs.logger.debug("Listen event FileAdded", {
             event: ev.toHuman(),
           });
           const cid = hex2str(data[0].toString());
-          await srvs.engine.enqueueAddFile(cid);
-        } else if (method === "FileStored") {
+          await srvs.engine.handleChainEvent({ type: "AddFile", cid });
+        } else if (name === "fileStorage.FileStored") {
           srvs.logger.debug("Listen event FileStored", {
             event: ev.toHuman(),
           });
           const cid = hex2str(data[0].toString());
-          await srvs.engine.enqueueAddFile(cid);
-        } else if (method === "FileDeleted") {
+          await srvs.engine.handleChainEvent({ type: "AddFile", cid });
+        } else if (name === "fileStorage.FileDeleted") {
           srvs.logger.debug("Listen event FileDeleted", {
             event: ev.toHuman(),
           });
           const cid = hex2str(data[0].toString());
-          await srvs.engine.enqueueDelFile(cid);
-        } else if (method === "FileForceDeleted") {
+          await srvs.engine.handleChainEvent({ type: "DelFile", cid });
+        } else if (name === "fileStorage.FileForceDeleted") {
           srvs.logger.debug("Listen event FileForceDeleted", {
             event: ev.toHuman(),
           });
           const cid = hex2str(data[0].toString());
-          await srvs.engine.enqueueDelFile(cid);
-        } else if (method === "NodeReported") {
+          await srvs.engine.handleChainEvent({ type: "DelFile", cid });
+        } else if (name === "fileStorage.NodeReported") {
           if (data[0].eq(this.walletAddress)) {
             srvs.logger.debug("Listen event NodeReported", {
               event: ev.toHuman(),
             });
             await this.updateReportState();
-            await srvs.engine.maybeCommitReport();
+            await srvs.engine.handleChainEvent({ type: "Reported" });
           }
+        } else if (name === "fileStorage.NewSession") {
+          await this.updateReportState();
         }
       }
     });
@@ -447,4 +450,19 @@ export interface CommonProps {
   planReportAt: number;
   sessionDuration: number;
   maxFileReplicas: number;
+}
+
+export type ChainEvent = AddFileEvent | DelFileEvent | ReportedEvent;
+export interface AddFileEvent {
+  type: "AddFile";
+  cid: string;
+}
+
+export interface DelFileEvent {
+  type: "DelFile";
+  cid: string;
+}
+
+export interface ReportedEvent {
+  type: "Reported";
 }
