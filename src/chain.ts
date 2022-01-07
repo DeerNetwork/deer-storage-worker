@@ -1,5 +1,5 @@
-import "@deernetwork/type-definitions/dist/interfaces/augment-api";
-import "@deernetwork/type-definitions/dist/interfaces/augment-types";
+import "@deernetwork/type-definitions/interfaces/augment-api";
+import "@deernetwork/type-definitions/interfaces/augment-types";
 
 import {
   ServiceOption,
@@ -249,33 +249,34 @@ export class Service {
     await this.api.query.system.events(async (events) => {
       for (const ev of events) {
         const {
-          event: { data, method },
+          event: { data, section, method },
         } = ev;
-        if (method === "FileAdded") {
+        const name = `${section}.${method}`;
+        if (name === "fileStorage.FileAdded") {
           srvs.logger.debug("Listen event FileAdded", {
             event: ev.toHuman(),
           });
           const cid = hex2str(data[0].toString());
           await srvs.engine.handleChainEvent({ type: "AddFile", cid });
-        } else if (method === "FileStored") {
+        } else if (name === "fileStorage.FileStored") {
           srvs.logger.debug("Listen event FileStored", {
             event: ev.toHuman(),
           });
           const cid = hex2str(data[0].toString());
           await srvs.engine.handleChainEvent({ type: "AddFile", cid });
-        } else if (method === "FileDeleted") {
+        } else if (name === "fileStorage.FileDeleted") {
           srvs.logger.debug("Listen event FileDeleted", {
             event: ev.toHuman(),
           });
           const cid = hex2str(data[0].toString());
           await srvs.engine.handleChainEvent({ type: "DelFile", cid });
-        } else if (method === "FileForceDeleted") {
+        } else if (name === "fileStorage.FileForceDeleted") {
           srvs.logger.debug("Listen event FileForceDeleted", {
             event: ev.toHuman(),
           });
           const cid = hex2str(data[0].toString());
           await srvs.engine.handleChainEvent({ type: "DelFile", cid });
-        } else if (method === "NodeReported") {
+        } else if (name === "fileStorage.NodeReported") {
           if (data[0].eq(this.walletAddress)) {
             srvs.logger.debug("Listen event NodeReported", {
               event: ev.toHuman(),
@@ -283,6 +284,8 @@ export class Service {
             await this.updateReportState();
             await srvs.engine.handleChainEvent({ type: "Reported" });
           }
+        } else if (name === "fileStorage.NewSession") {
+          await this.updateReportState();
         }
       }
     });

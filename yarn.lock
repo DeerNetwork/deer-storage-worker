@@ -37,10 +37,10 @@
     enabled "2.0.x"
     kuler "^2.0.0"
 
-"@deernetwork/type-definitions@^0.4.42":
-  version "0.4.42"
-  resolved "https://registry.yarnpkg.com/@deernetwork/type-definitions/-/type-definitions-0.4.42.tgz#7fd6279e8c9b55a008f689ce8fd0a3bbece395ae"
-  integrity sha512-UHfhT4NdXQz8T+2B5oG09m7ZrVWh0uiaam4hc9lTJHjQ/ng21d2dHrr9dCR3d36UtcV/YldXxmJP6rvS4jqxzQ==
+"@deernetwork/type-definitions@^0.4.44":
+  version "0.4.44"
+  resolved "https://registry.yarnpkg.com/@deernetwork/type-definitions/-/type-definitions-0.4.44.tgz#1daeb767cab3a6a3eb03ecadd87ddde8d12fb071"
+  integrity sha512-Ifa0wGmv9LU97pZs6BGeJHjvIrcT5SNp+/rc8emC7UPcvqhignUfsK1JWarq2UlxVdsSnDkKIkkwGiRHpWnz5A==
 
 "@eslint/eslintrc@^1.0.4":
   version "1.0.4"
