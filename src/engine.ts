@@ -375,7 +375,7 @@ export class Service {
     let reportLiquidateFiles: string[] = [];
     for (const file of files) {
       const { cid } = file;
-      if (!this.isFileLiquidated(file)) {
+      if (this.isFileNeedLiquidate(file)) {
         reportLiquidateFiles.push(cid);
       }
       if (this.isFileIncluded(file)) {
@@ -440,8 +440,8 @@ export class Service {
     return false;
   }
 
-  private isFileLiquidated(file: ChainFile) {
-    return file.liquidateAt > srvs.chain.latestBlockNum - 1;
+  private isFileNeedLiquidate(file: ChainFile) {
+    return file.liquidateAt > 0 && file.liquidateAt < srvs.chain.latestBlockNum;
   }
 
   private calculateScore(item: QueueItem, timeEstimate: number) {
